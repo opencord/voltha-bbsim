@@ -18,9 +18,37 @@ import "google/api/annotations.proto";
 
 service Openolt {
 
+    rpc DisableOlt(Empty) returns (Empty) {
+        option (google.api.http) = {
+          post: "/v1/Disable"
+          body: "*"
+        };
+    }
+
+    rpc ReenableOlt(Empty) returns (Empty) {
+        option (google.api.http) = {
+          post: "/v1/Reenable"
+          body: "*"
+        };
+    }
+
     rpc ActivateOnu(Onu) returns (Empty) {
         option (google.api.http) = {
           post: "/v1/EnableOnu"
+          body: "*"
+        };
+    }
+
+    rpc DeactivateOnu(Onu) returns (Empty) {
+        option (google.api.http) = {
+          post: "/v1/DisableOnu"
+          body: "*"
+        };
+    }
+
+    rpc DeleteOnu(Onu) returns (Empty) {
+        option (google.api.http) = {
+          post: "/v1/DeleteOnu"
           body: "*"
         };
     }
@@ -39,6 +67,13 @@ service Openolt {
         };
     }
 
+    rpc UplinkPacketOut(UplinkPacket) returns (Empty) {
+        option (google.api.http) = {
+          post: "/v1/UplinkPacketOut"
+          body: "*"
+        };
+    }
+
     rpc FlowAdd(Flow) returns (Empty) {
         option (google.api.http) = {
           post: "/v1/FlowAdd"
@@ -50,6 +85,27 @@ service Openolt {
         option (google.api.http) = {
           post: "/v1/HeartbeatCheck"
           body: "*"
+        };
+    }
+
+    rpc EnablePonIf(Interface) returns (Empty) {
+        option (google.api.http) = {
+            post: "/v1/EnablePonIf"
+            body: "*"
+        };
+    }
+
+    rpc DisablePonIf(Interface) returns (Empty) {
+        option (google.api.http) = {
+            post: "/v1/DisablePonIf"
+            body: "*"
+        };
+    }
+
+    rpc Reboot(Empty) returns (Empty) {
+         option (google.api.http) = {
+            post: "/v1/Reboot"
+            body: "*"
         };
     }
 
@@ -65,6 +121,25 @@ message Indication {
         OnuIndication onu_ind = 5;
         OmciIndication omci_ind = 6;
         PacketIndication pkt_ind = 7;
+        PortStatistics port_stats = 8;
+        FlowStatistics flow_stats = 9;
+        AlarmIndication alarm_ind= 10;
+    }
+}
+
+message AlarmIndication {
+    oneof data {
+        LosIndication los_ind = 1;
+        DyingGaspIndication dying_gasp_ind = 2;
+        OnuAlarmIndication onu_alarm_ind = 3;
+        OnuStartupFailureIndication onu_startup_fail_ind = 4;
+        OnuSignalDegradeIndication onu_signal_degrade_ind = 5;
+        OnuDriftOfWindowIndication onu_drift_of_window_ind = 6;
+        OnuLossOfOmciChannelIndication onu_loss_omci_ind = 7;
+        OnuSignalsFailureIndication onu_signals_fail_ind = 8;
+        OnuTransmissionInterferenceWarning onu_tiwi_ind = 9;
+        OnuActivationFailureIndication onu_activation_fail_ind = 10;
+        OnuProcessingErrorIndication onu_processing_error_ind = 11;
     }
 }
 
@@ -109,6 +184,10 @@ message PacketIndication {
     bytes pkt = 4;
 }
 
+message Interface {
+    fixed32 intf_id = 1;
+}
+
 message Heartbeat {
     fixed32 heartbeat_signature = 1;
 }
@@ -117,6 +196,7 @@ message Onu {
     fixed32 intf_id = 1;
     fixed32 onu_id = 2;
     SerialNumber serial_number = 3;
+    fixed32 pir = 4;   // peak information rate assigned to onu
 }
 
 message OmciMsg {
@@ -129,6 +209,11 @@ message OnuPacket {
     fixed32 intf_id = 1;
     fixed32 onu_id = 2;
     bytes pkt = 3;
+}
+
+message UplinkPacket {
+    fixed32 intf_id = 1;
+    bytes pkt = 2;
 }
 
 message Classifier {
@@ -174,11 +259,112 @@ message Flow {
     fixed32 gemport_id = 6;
     Classifier classifier = 7;
     Action action = 8;
+    fixed32 priority = 9;
 }
 
 message SerialNumber {
     bytes vendor_id = 1;
     bytes vendor_specific = 2;
 }
+
+message PortStatistics {
+    fixed32 intf_id = 1;
+    fixed64 rx_bytes = 2;
+    fixed64 rx_packets = 3;
+    fixed64 rx_ucast_packets = 4;
+    fixed64 rx_mcast_packets = 5;
+    fixed64 rx_bcast_packets = 6;
+    fixed64 rx_error_packets = 7;
+    fixed64 tx_bytes = 8;
+    fixed64 tx_packets = 9;
+    fixed64 tx_ucast_packets = 10;
+    fixed64 tx_mcast_packets = 11;
+    fixed64 tx_bcast_packets = 12;
+    fixed64 tx_error_packets = 13;
+    fixed64 rx_crc_errors = 14;
+    fixed64 bip_errors = 15;
+    fixed32 timestamp = 16;
+}
+
+message FlowStatistics {
+    fixed32 flow_id = 1;
+    fixed64 rx_bytes = 2;
+    fixed64 rx_packets = 3;
+    fixed64 tx_bytes = 8;
+    fixed64 tx_packets = 9;
+    fixed32 timestamp = 16;
+}
+
+message LosIndication {
+    fixed32 intf_id = 1;
+    string status = 2;
+}
+
+message DyingGaspIndication {
+    fixed32 intf_id = 1;
+    fixed32 onu_id = 2;
+    string status = 3;
+}
+
+message OnuAlarmIndication {
+    fixed32 intf_id = 1;
+    fixed32 onu_id = 2;
+    string los_status = 3;
+    string lob_status = 4;
+    string lopc_miss_status = 5;
+    string lopc_mic_error_status = 6;
+}
+
+message OnuStartupFailureIndication {
+    fixed32 intf_id = 1;
+    fixed32 onu_id = 2;
+    string status = 3;
+}
+
+message OnuSignalDegradeIndication {
+    fixed32 intf_id = 1;
+    fixed32 onu_id = 2;
+    string status = 3;
+    fixed32 inverse_bit_error_rate = 4;
+}
+
+message OnuDriftOfWindowIndication {
+    fixed32 intf_id = 1;
+    fixed32 onu_id = 2;
+    string status = 3;
+    fixed32 drift = 4;
+    fixed32 new_eqd = 5;
+}
+
+message OnuLossOfOmciChannelIndication {
+    fixed32 intf_id = 1;
+    fixed32 onu_id = 2;
+    string status = 3;
+}
+
+message OnuSignalsFailureIndication {
+    fixed32 intf_id = 1;
+    fixed32 onu_id = 2;
+    string status = 3;
+    fixed32 inverse_bit_error_rate = 4;
+}
+
+message OnuTransmissionInterferenceWarning {
+    fixed32 intf_id = 1;
+    fixed32 onu_id = 2;
+    string status = 3;
+    fixed32 drift = 4;
+}
+
+message OnuActivationFailureIndication {
+    fixed32 intf_id = 1;
+    fixed32 onu_id = 2;
+}
+
+message OnuProcessingErrorIndication {
+    fixed32 intf_id = 1;
+    fixed32 onu_id = 2;
+}
+
 
 message Empty {}
