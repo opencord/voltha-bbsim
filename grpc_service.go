@@ -18,8 +18,8 @@ package main
 
 import (
 	"log"
+  "gerrit.opencord.org/voltha-bbsim/openolt"
 	"golang.org/x/net/context"
-	"./openolt"
 	"time"
 )
 

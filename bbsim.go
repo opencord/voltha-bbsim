@@ -17,9 +17,9 @@
 package main
 
 import (
-	"./openolt"
 	"log"
 	"net"
+	"gerrit.opencord.org/voltha-bbsim/openolt"
 	"google.golang.org/grpc"
 	"fmt"
 	"flag"
