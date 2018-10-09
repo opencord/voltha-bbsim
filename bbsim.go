@@ -17,266 +17,20 @@
 package main
 
 import (
-	"log"
-	"net"
-	"gerrit.opencord.org/voltha-bbsim/openolt"
-	"google.golang.org/grpc"
-	"fmt"
+	"gerrit.opencord.org/voltha-bbsim/protos"
+	"gerrit.opencord.org/voltha-bbsim/core"
 	"flag"
-	"reflect"
-	"strings"
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 )
 
-type server struct{
-	olt olt
-	onus map[uint32]map[uint32]*onu
-}
-
-
-type oltState int
-type onuState int
-
-const(
-	PRE_ENABLE oltState = iota
-	OLT_UP
-	PONIF_UP
-	ONU_DISCOVERED
-)
-
-const(
-	ONU_PRE_ACTIVATED onuState = iota
-	ONU_ACTIVATED
-)
-
-type olt struct {
-	ID			         uint32
-	NumPonIntf           uint32
-	NumNniIntf           uint32
-	Mac                  string
-	SerialNumber         string
-	Manufacture          string
-	Name                 string
-	internalState        oltState
-	OperState            string
-	Intfs                []intf
-	HeartbeatSignature   uint32
-}
-
-type intf struct{
-	Type                string
-	IntfID              uint32
-	OperState           string
-}
-
-type onu struct{
-	internalState       onuState
-	IntfID              uint32
-	OperState           string
-	SerialNumber        *openolt.SerialNumber
-}
-
-func createOlt(oltid uint32, npon uint32, nnni uint32) olt{
-	olt := olt {}
-	olt.ID              = oltid
-	olt.NumPonIntf      = npon
-	olt.NumNniIntf      = nnni
-	olt.Name          = "BBSIM OLT"
-	olt.internalState = PRE_ENABLE
-	olt.OperState     = "up"
-	olt.Intfs = make([]intf, olt.NumPonIntf + olt.NumNniIntf)
-	olt.HeartbeatSignature = oltid
-	for i := uint32(0); i < olt.NumNniIntf; i ++ {
-		olt.Intfs[i].IntfID = i
-		olt.Intfs[i].OperState = "up"
-		olt.Intfs[i].Type      = "nni"
-	}
-	for i := uint32(olt.NumNniIntf); i <  olt.NumPonIntf + olt.NumNniIntf; i ++ {
-		olt.Intfs[i].IntfID = i
-		olt.Intfs[i].OperState = "up"
-		olt.Intfs[i].Type      = "pon"
-	}
-	return olt
-}
-
-func createSN(oltid uint32, intfid uint32, onuid uint32) string{
-	sn := fmt.Sprintf("%X%X%02X", oltid, intfid, onuid)
-	return sn
-}
-
-func createOnus(oltid uint32, intfid uint32, nonus uint32, nnni uint32) map[uint32] *onu {
-	onus := make(map[uint32] *onu ,nonus)
-	for onuid := uint32(1 + (intfid - nnni) * nonus); onuid <= (intfid - nnni + 1) * nonus; onuid ++ {
-		onu := onu{}
-		onu.internalState = ONU_PRE_ACTIVATED
-		onu.IntfID        = intfid
-		onu.OperState     = "up"
-		onu.SerialNumber  = new(openolt.SerialNumber)
-		onu.SerialNumber.VendorId = []byte("BRCM")
-		onu.SerialNumber.VendorSpecific = []byte(createSN(oltid, intfid, uint32(onuid))) //FIX
-		onus[onuid] = &onu
-	}
-	return onus
-}
-
-func validateONU(targetonu openolt.Onu, regonus map[uint32]map[uint32] *onu) bool{
-	for _, onus := range regonus{
-		for _, onu := range onus{
-			if validateSN(*targetonu.SerialNumber, *onu.SerialNumber){
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func validateSN(sn1 openolt.SerialNumber, sn2 openolt.SerialNumber) bool{
-	return reflect.DeepEqual(sn1.VendorId, sn2.VendorId) && reflect.DeepEqual(sn1.VendorSpecific, sn2.VendorSpecific)
-}
-
-func isAllONUActive(regonus map[uint32]map[uint32] *onu ) bool{
-	for _, onus := range regonus{
-		for _, onu := range onus{
-			if onu.internalState != ONU_ACTIVATED{
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func updateOnusOpStatus(ponif uint32, onus map[uint32] *onu, opstatus string){
-	for i, onu := range onus{
-		onu.OperState = "up"
-		log.Printf("(PONIF:%d) ONU [%d] discovered.\n", ponif, i)
-	}
-}
-
-func activateOLT(s *server, stream openolt.Openolt_EnableIndicationServer) error{
-	// Activate OLT
-	olt  := &s.olt
-	onus := s.onus
-	if err := sendOltInd(stream, olt); err != nil {
-		return err
-	}
-	olt.OperState = "up"
-	olt.internalState = OLT_UP
-	log.Printf("OLT %s sent OltInd.\n", olt.Name)
-
-
-	// OLT sends Interface Indication to Adapter
-	if err := sendIntfInd(stream, olt); err != nil {
-		return err
-	}
-	log.Printf("OLT %s sent IntfInd.\n", olt.Name)
-
-	// OLT sends Operation Indication to Adapter after activating each interface
-	//time.Sleep(IF_UP_TIME * time.Second)
-	olt.internalState = PONIF_UP
-	if err := sendOperInd(stream, olt); err != nil {
-		return err
-	}
-	log.Printf("OLT %s sent OperInd.\n", olt.Name)
-
-	// OLT sends ONU Discover Indication to Adapter after ONU discovery
-	for intfid := uint32(olt.NumNniIntf); intfid < olt.NumNniIntf + olt.NumPonIntf; intfid ++ {
-		updateOnusOpStatus(intfid, onus[intfid], "up")
-	}
-
-	for intfid := uint32(olt.NumNniIntf); intfid < olt.NumNniIntf + olt.NumPonIntf; intfid ++ {
-		sendOnuDiscInd(stream, onus[intfid])
-		log.Printf("OLT id:%d sent ONUDiscInd.\n", olt.ID)
-	}
-
-	for{
-		//log.Printf("stop %v\n", s.onus)
-		if isAllONUActive(s.onus){
-			//log.Printf("break! %v\n", s.onus)
-			break
-		}
-	}
-	for intfid := uint32(olt.NumNniIntf); intfid < olt.NumNniIntf + olt.NumPonIntf; intfid ++ {
-		sendOnuInd(stream, onus[intfid])
-		log.Printf("OLT id:%d sent ONUInd.\n", olt.ID)
-	}
-	return nil
-}
-
-func sendOltInd(stream openolt.Openolt_EnableIndicationServer, olt *olt) error{
-	data := &openolt.Indication_OltInd{OltInd: &openolt.OltIndication{OperState: "up"}}
-	if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-		log.Printf("Failed to send OLT indication: %v\n", err)
-		return err
-	}
-	return nil
-}
-
-func sendIntfInd(stream openolt.Openolt_EnableIndicationServer, olt *olt) error{
-	for i := uint32(0); i < olt.NumPonIntf + olt.NumNniIntf; i ++ {
-		intf := olt.Intfs[i]
-		data := &openolt.Indication_IntfInd{&openolt.IntfIndication{IntfId: intf.IntfID, OperState: intf.OperState}}
-		if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-			log.Printf("Failed to send Intf [id: %d] indication : %v\n", i, err)
-			return err
-		}
-		log.Printf("SendIntfInd olt:%d intf:%d (%s)\n", olt.ID, intf.IntfID, intf.Type)
-	}
-	return nil
-}
-
-func sendOperInd(stream openolt.Openolt_EnableIndicationServer, olt *olt) error{
-	for i := uint32(0); i < olt.NumPonIntf + olt.NumNniIntf; i ++ {
-		intf := olt.Intfs[i]
-		data := &openolt.Indication_IntfOperInd{&openolt.IntfOperIndication{Type: intf.Type, IntfId: intf.IntfID, OperState: intf.OperState}}
-		if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-			log.Printf("Failed to send IntfOper [id: %d] indication : %v\n", i, err)
-			return err
-		}
-		log.Printf("SendOperInd olt:%d intf:%d (%s)\n", olt.ID, intf.IntfID, intf.Type)
-	}
-	return nil
-}
-
-func sendOnuDiscInd(stream openolt.Openolt_EnableIndicationServer, onus map[uint32] *onu) error{
-	for i, onu := range onus {
-		data := &openolt.Indication_OnuDiscInd{&openolt.OnuDiscIndication{IntfId: onu.IntfID, SerialNumber:onu.SerialNumber}}
-		log.Printf("sendONUDiscInd Onuid: %d\n", i)
-		if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-			log.Printf("Failed to send ONUDiscInd [id: %d]: %v\n", i, err)
-			return err
-		}
-	}
-	return nil
-}
-
-func sendOnuInd(stream openolt.Openolt_EnableIndicationServer, onus map[uint32] *onu) error{
-	for i, onu := range onus {
-		data := &openolt.Indication_OnuInd{&openolt.OnuIndication{IntfId: onu.IntfID, OnuId: uint32(i), OperState: "up", AdminState: "up", SerialNumber:onu.SerialNumber}}
-		log.Printf("sendONUInd Onuid: %d\n", i)
-		if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-			log.Printf("Failed to send ONUInd [id: %d]: %v\n", i, err)
-			return err
-		}
-	}
-	return nil
-}
-
-func newServer(oltid uint32, npon uint32, nonus uint32) *server{
-	s := new(server)
-	s.olt  = createOlt(oltid, npon, 1)
-	nnni := s.olt.NumNniIntf
-	log.Printf("OLT ID: %d was retrieved.\n", s.olt.ID)
-
-	s.onus = make(map[uint32]map[uint32] *onu)
-	for intfid := nnni; intfid < npon + nnni; intfid ++ {
-		s.onus[intfid] = createOnus(oltid, intfid, nonus, nnni)
-	}
-	//log.Printf("s.onus: %v\n", s.onus)
-	return s
-}
-
-func printBanner(){
+func printBanner() {
 	log.Println("     ________    _______   ________                 ")
 	log.Println("    / ____   | / ____   | / ______/  __            ")
 	log.Println("   / /____/ / / /____/ / / /_____   /_/            ")
@@ -285,38 +39,63 @@ func printBanner(){
 	log.Println("/________/ /________/ /________/ /_/ /_/ /_/ /_/  ")
 }
 
-func getOptions()(string, uint32, uint32, uint32, uint32){
-	addressport := flag.String("H","127.0.0.1:50060","IP address:port")
-	nolts    := flag.Int("N", 1, "Number of OLTs")
-	nports   := flag.Int("i", 1, "Number of PON-IF ports")
-	nonus    := flag.Int("n", 1, "Number of ONUs per PON-IF port")
+func getOptions() (uint32, string, uint32, uint32, uint32, int, int, string, core.Mode) {
+	addressport := flag.String("H", ":50060", "IP address:port")
+	oltid := flag.Int("id", 0, "OLT-ID")
+	nintfs := flag.Int("i", 1, "Number of PON-IF ports")
+	nonus := flag.Int("n", 1, "Number of ONUs per PON-IF port")
+	modeopt := flag.String("m", "default", "Emulation mode (default, aaa, both (aaa & dhcp))")
+	aaawait := flag.Int("a", 30, "Wait time (sec) for activation WPA supplicants")
+	dhcpwait := flag.Int("d", 10, "Wait time (sec) for activation DHCP clients")
+	dhcpservip := flag.String("s", "182.21.0.1", "DHCP Server IP Address")
+	mode := core.DEFAULT
 	flag.Parse()
-	fmt.Printf("%v\n", *addressport)
-	//fmt.Println("nports:", *nports, "nonus:", *nonus)
-	address  := strings.Split(*addressport, ":")[0]
-	port,_ := strconv.Atoi(strings.Split(*addressport, ":")[1])
-	return address, uint32(port), uint32(*nolts), uint32(*nports), uint32(*nonus)
+	if *modeopt == "aaa" {
+		mode = core.AAA
+	} else if *modeopt == "both" {
+		mode = core.BOTH
+	}
+	address := strings.Split(*addressport, ":")[0]
+	tmp, _ := strconv.Atoi(strings.Split(*addressport, ":")[1])
+	port := uint32(tmp)
+	return uint32(*oltid), address, port, uint32(*nintfs), uint32(*nonus), *aaawait, *dhcpwait, *dhcpservip, mode
 }
 
-
 func main() {
+	// CLI Shows up
 	printBanner()
-	ipaddress, baseport, nolts, npon, nonus := getOptions()
-	log.Printf("ip:%s, baseport:%d, nolts:%d, npon:%d, nonus:%d\n", ipaddress, baseport, nolts, npon, nonus)
-	servers := make([] *server, nolts)
-	grpcservers := make([] *grpc.Server, nolts)
-	lis         := make([] net.Listener, nolts)
+	oltid, ip, port, npon, nonus, aaawait, dhcpwait, dhcpservip, mode := getOptions()
+	log.Printf("ip:%s, baseport:%d, npon:%d, nonus:%d, mode:%d\n", ip, port, npon, nonus, mode)
+
+	// Set up gRPC Server
 	var wg sync.WaitGroup
-	wg.Add(int(nolts))
-	for oltid := uint32(0); oltid < nolts; oltid ++ {
-		portnum := baseport + oltid
-		addressport := ipaddress + ":" + strconv.Itoa(int(portnum))
-		log.Printf("Listening %s ...", addressport)
-		lis[oltid], _ = net.Listen("tcp", addressport)
-		servers[oltid] = newServer(oltid, npon, nonus)
-		grpcservers[oltid] = grpc.NewServer()
-		openolt.RegisterOpenoltServer(grpcservers[oltid], servers[oltid])
-		go grpcservers[oltid].Serve(lis[oltid])
+
+	addressport := ip + ":" + strconv.Itoa(int(port))
+	endchan := make(chan int, 1)
+	listener, gserver, err := core.CreateGrpcServer(oltid, npon, nonus, addressport)
+	server := core.CreateServer(oltid, npon, nonus, aaawait, dhcpwait, dhcpservip, gserver, mode, endchan)
+	if err != nil {
+		log.Println(err)
 	}
+	openolt.RegisterOpenoltServer(gserver, server)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		gserver.Serve(listener)
+	}()
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		for sig := range c {
+			fmt.Println("SIGINT", sig)
+			close(c)
+			close(server.Endchan)
+			gserver.Stop()
+		}
+	}()
 	wg.Wait()
+	time.Sleep(5 * time.Second)
+	log.Println("Reach to the end line")
 }

@@ -17,25 +17,25 @@ DOCKERTAG  ?= "latest"
 
 .PHONY: dep test clean docker
 
-bbsim: $(BBSIM_DEPS) openolt/openolt.pb.go dep
+bbsim: protos/openolt.pb.go dep
 	go build -i -v -o $@
 
-dep: openolt/openolt.pb.go
+dep: protos/openolt.pb.go
 	@go get -v -d ./...
 
-openolt/openolt.pb.go: openolt.proto
+protos/openolt.pb.go: openolt.proto
 	@protoc -I . \
 	-I${GOPATH}/src \
 	-I${GOPATH}/src/github.com/grpc-ecosystem/grpc-gateway/third_party/googleapis \
-	--go_out=plugins=grpc:openolt \
-	$<
+	--go_out=plugins=grpc:protos/ \
+	openolt.proto
 
 test:
 	@go test -v ./...
 	@go test -v ./... -cover
 
 clean:
-	@rm bbsim openolt/openolt.pb.go
+	@rm bbsim protos/openolt.pb.go
 
 docker:
 	@docker build -t voltha/voltha-bbsim:${DOCKERTAG} .
