@@ -7,16 +7,19 @@ The difference from the existing PONsim is to focus on emulating control message
 
 The BBSim container contains wpa_supplicants and dhcp clients for supporting AAA client (wpa_supplicant) emulation & DHCP client emulation.
 
+```
 ==============
 VOLTHA
-OpenOLT Adapter
+BBSim Adapter
 ==============
  |
  |  gRPC connections
  |
 ==============
-BBSim container
+BBSim containers
+(Each BBSim container corresponds to a single olt)
 ==============
+```
 
 # 2. Build, Run BBSim and VOLTHA-CLI commands
 ```
