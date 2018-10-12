@@ -17,7 +17,6 @@
 package device
 
 import (
-	"fmt"
 	"log"
 	"gerrit.opencord.org/voltha-bbsim/protos"
 	"reflect"
@@ -38,8 +37,8 @@ type Onu struct {
 	OnuID         uint32
 }
 
-func createSN(oltid uint32, intfid uint32, onuid uint32) string {
-	sn := fmt.Sprintf("%X%X%02X", oltid, intfid, onuid)
+func createSN(oltid uint32, intfid uint32, onuid uint32) []byte {
+	sn := []byte{0, byte(oltid % 256), byte(intfid), byte(onuid)}
 	return sn
 }
 
@@ -52,7 +51,7 @@ func CreateOnus(oltid uint32, intfid uint32, nonus uint32, nnni uint32) []*Onu {
 		onu.OperState = "up"
 		onu.SerialNumber = new(openolt.SerialNumber)
 		onu.SerialNumber.VendorId = []byte("NONE")
-		onu.SerialNumber.VendorSpecific = []byte(createSN(oltid, intfid, uint32(i))) //FIX
+		onu.SerialNumber.VendorSpecific = createSN(oltid, intfid, uint32(i))
 		onus = append(onus, &onu)
 	}
 	return onus
