@@ -198,6 +198,31 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 				errchan <- err
 				return
 			}
+
+			if s.Mode == BOTH {
+				go func() {
+					defer func() {
+						log.Println("exeDHCPTest Done")
+					}()
+					info, err := s.identifyNniIoinfo("outside")
+					setup.ActivateDHCPServer(info.name, s.DhcpServerIP)
+
+					infos, err := s.getUniIoinfos("outside")
+					if err != nil {
+						errchan <- err
+						return
+					}
+					univeths := []string{}
+					for _, info := range infos {
+						univeths = append(univeths, info.name)
+					}
+					err = s.exeDHCPTest(univeths)
+					if err != nil {
+						errchan <- err
+						return
+					}
+				}()
+			}
 		}()
 		wg.Wait()
 		tearDown(vethenv) // Grace teardown
@@ -309,6 +334,25 @@ func (s *Server) exeAAATest(vethenv []string) error {
 		}
 	}
 	err := setup.ActivateWPASups(vethenv)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Server) exeDHCPTest(vethenv []string) error {
+	log.Println("exeDHCPTest Start")
+	for i := 0; i < s.DhcpWait; i++ {
+		select {
+		case <-s.Endchan:
+			log.Println("exeDHCPTest thread receives close !")
+			return nil
+		default:
+			log.Println("exeDHCPTest is now sleeping....")
+			time.Sleep(time.Second)
+		}
+	}
+	err := setup.ActivateDHCPClients(vethenv)
 	if err != nil {
 		return err
 	}

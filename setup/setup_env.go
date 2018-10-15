@@ -37,6 +37,15 @@ func ActivateWPASups(vethnames []string) error {
 	return nil
 }
 
+func ActivateDHCPClients(vethnames []string) error {
+	for _, vethname := range vethnames {
+		if err := activateDHCPClient(vethname); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func KillAllWPASups() error {
 	err := exec.Command("pkill", "wpa_supplicant").Run()
 	if err != nil {
@@ -106,5 +115,34 @@ func activateWPASupplicant(vethname string) (err error) {
 		return
 	}
 	log.Printf("activateWPASupplicant() for :%s\n", vethname)
+	return
+}
+
+func activateDHCPClient(vethname string) (err error) {
+	cmd := "/usr/local/bin/dhclient"
+	err = exec.Command(cmd, vethname).Start()
+	if err != nil {
+		log.Printf("[ERROR] Faile to activateWPASupplicant() for :%s %v\n", vethname, err)
+		return
+	}
+	log.Printf("activateDHCPClient()\n", vethname)
+	return
+}
+
+func ActivateDHCPServer(veth string, serverip string) {
+	cmd := "/sbin/ifconfig"
+	err := exec.Command(cmd, veth, serverip, "up").Run()
+	if err != nil {
+		log.Printf("[ERROR] Fail to up %s()\n", veth, err)
+		return
+	}
+	cmd = "/usr/local/bin/dhcpd"
+	conf := "/etc/dhcp/dhcpd.conf"
+	err = exec.Command(cmd, "-cf", conf, veth).Run()
+	if err != nil {
+		log.Printf("[ERROR] Fail to activateDHCP Server ()\n", err)
+		return
+	}
+	log.Printf("Activate DHCP Server()\n")
 	return
 }

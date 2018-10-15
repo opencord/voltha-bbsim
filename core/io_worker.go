@@ -73,8 +73,8 @@ func PopVLAN(pkt gopacket.Packet) (gopacket.Packet, uint16, error) {
 			return retpkt, vid, nil
 		}
 	}
-	//return pkt, 1, nil
-	return nil, 0, errors.New("failed to pop vlan")
+	return pkt, 0, nil
+	//return nil, 0, errors.New("failed to pop vlan")
 }
 
 func PushVLAN(pkt gopacket.Packet, vid uint16) (gopacket.Packet, error) {
