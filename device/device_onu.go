@@ -30,7 +30,7 @@ const (
 )
 
 type Onu struct {
-	InternalState onuState
+	InternalState *onuState
 	IntfID        uint32
 	OperState     string
 	SerialNumber  *openolt.SerialNumber
@@ -46,7 +46,8 @@ func CreateOnus(oltid uint32, intfid uint32, nonus uint32, nnni uint32) []*Onu {
 	onus := []*Onu{}
 	for i := 0; i < int(nonus); i++ {
 		onu := Onu{}
-		onu.InternalState = ONU_PRE_ACTIVATED
+		onu.InternalState = new(onuState)
+		*onu.InternalState = ONU_PRE_ACTIVATED
 		onu.IntfID = intfid
 		onu.OperState = "up"
 		onu.SerialNumber = new(openolt.SerialNumber)
@@ -55,6 +56,11 @@ func CreateOnus(oltid uint32, intfid uint32, nonus uint32, nnni uint32) []*Onu {
 		onus = append(onus, &onu)
 	}
 	return onus
+}
+
+func (onu *Onu) InitializeStatus(){
+	onu.OperState = "up"
+	*onu.InternalState = ONU_PRE_ACTIVATED
 }
 
 func ValidateONU(targetonu openolt.Onu, regonus map[uint32][]*Onu) bool {

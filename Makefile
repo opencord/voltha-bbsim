@@ -21,22 +21,30 @@ bbsim: protos/openolt.pb.go dep
 	go build -i -v -o $@
 
 dep: protos/openolt.pb.go
-	@go get -v -d ./...
+	go get -v -d ./...
 
 protos/openolt.pb.go: openolt.proto
 	@protoc -I . \
 	-I${GOPATH}/src \
 	-I${GOPATH}/src/github.com/grpc-ecosystem/grpc-gateway/third_party/googleapis \
 	--go_out=plugins=grpc:protos/ \
-	openolt.proto
+	$<
 
 test:
-	@go test -v ./...
-	@go test -v ./... -cover
+	go test -v ./...
+	go test -v ./... -cover
+
+fmt:
+	go fmt ./...
+
+vet:
+	go vet ./...
+
+lint:
+	gometalinter --vendor --exclude ../../golang.org --skip protos --sort path --sort line ./...
 
 clean:
-	@rm bbsim protos/openolt.pb.go
+	rm -f bbsim openolt/openolt.pb.go
 
 docker:
-	@docker build -t voltha/voltha-bbsim:${DOCKERTAG} .
-
+	docker build -t voltha/voltha-bbsim:${DOCKERTAG} .

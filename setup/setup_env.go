@@ -46,21 +46,13 @@ func ActivateDHCPClients(vethnames []string) error {
 	return nil
 }
 
-func KillAllWPASups() error {
-	err := exec.Command("pkill", "wpa_supplicant").Run()
+func KillProcess (name string) error {
+	err := exec.Command("pkill", name).Run()
 	if err != nil {
-		log.Printf("[ERROR] Fail to pkill wpa_supplicant: %v\n", err)
+		log.Printf("[ERROR] Fail to pkill %s: %v\n", name, err)
 		return err
 	}
-	return nil
-}
-
-func KillAllDHCPClients() error {
-	err := exec.Command("pkill", "dhclient").Run()
-	if err != nil {
-		log.Printf("[ERROR] Fail to pkill dhclient: %v\n", err)
-		return err
-	}
+	log.Printf("Successfully killed %s\n", name)
 	return nil
 }
 
@@ -129,20 +121,24 @@ func activateDHCPClient(vethname string) (err error) {
 	return
 }
 
-func ActivateDHCPServer(veth string, serverip string) {
-	cmd := "/sbin/ifconfig"
-	err := exec.Command(cmd, veth, serverip, "up").Run()
+func ActivateDHCPServer(veth string, serverip string) error {
+	err := exec.Command("ip", "addr", "add", serverip, "dev",veth).Run()
 	if err != nil {
-		log.Printf("[ERROR] Fail to up %s()\n", veth, err)
-		return
+		log.Printf("[ERROR] Fail to add ip to %s address: %s\n", veth, err)
+		return err
 	}
-	cmd = "/usr/local/bin/dhcpd"
+	err = exec.Command("ip", "link", "set", veth, "up").Run()
+	if err != nil {
+		log.Printf("[ERROR] Fail to set %s up: %s\n", veth, err)
+		return err
+	}
+	cmd := "/usr/local/bin/dhcpd"
 	conf := "/etc/dhcp/dhcpd.conf"
 	err = exec.Command(cmd, "-cf", conf, veth).Run()
 	if err != nil {
 		log.Printf("[ERROR] Fail to activateDHCP Server ()\n", err)
-		return
+		return err
 	}
 	log.Printf("Activate DHCP Server()\n")
-	return
+	return err
 }

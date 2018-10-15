@@ -45,13 +45,17 @@ func (s *Server) CollectStatistics(c context.Context, empty *openolt.Empty) (*op
 
 func (s *Server) GetDeviceInfo(c context.Context, empty *openolt.Empty) (*openolt.DeviceInfo, error) {
 	log.Printf("OLT receives GetDeviceInfo()\n")
-	return new(openolt.DeviceInfo), nil
+	devinfo := new(openolt.DeviceInfo)
+	devinfo.Vendor = "CORD"
+	devinfo.OnuIdStart = 0
+	devinfo.OnuIdEnd = 3
+	devinfo.PonPorts = 4
+	return devinfo, nil
 }
 
 func (s *Server) ActivateOnu(c context.Context, onu *openolt.Onu) (*openolt.Empty, error) {
 	log.Printf("OLT receives ActivateONU()\n")
 	result := device.ValidateONU(*onu, s.Onumap)
-
 	if result == true {
 		matched, error := s.getOnuBySN(onu.SerialNumber)
 		if error != nil {
@@ -59,7 +63,7 @@ func (s *Server) ActivateOnu(c context.Context, onu *openolt.Onu) (*openolt.Empt
 		}
 		onuid := onu.OnuId
 		matched.OnuID = onuid
-		matched.InternalState = device.ONU_ACTIVATED
+		*matched.InternalState = device.ONU_ACTIVATED
 		log.Printf("ONU IntfID: %d OnuID: %d activated succesufully.\n", onu.IntfId, onu.OnuId)
 	}
 	return new(openolt.Empty), nil
@@ -130,6 +134,24 @@ func (s *Server) DisablePonIf(c context.Context, intf *openolt.Interface) (*open
 
 func (s *Server) Reboot(c context.Context, empty *openolt.Empty) (*openolt.Empty, error) {
 	log.Printf("OLT %d receives Reboot ().\n", s.Olt.ID)
+	log.Printf("pointer@Reboot %p", s)
+	// Initialize OLT & Env
+	if s.TestFlag == true{
+		log.Println("Initialize by Reboot")
+		cleanUpVeths(s.VethEnv)
+		close(s.Endchan)
+		processes := s.Processes
+		log.Println("processes:", processes)
+		killProcesses(processes)
+		s.Initialize()
+	}
+	olt := s.Olt
+	olt.InitializeStatus()
+	for intfid, _ := range s.Onumap{
+		for _, onu := range s.Onumap[intfid] {
+			onu.InitializeStatus()
+		}
+	}
 	return new(openolt.Empty), nil
 }
 

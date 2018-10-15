@@ -1,10 +1,10 @@
-# Copyright 2018 the original author or authors.
+# Copyright 2018-present Open Networking Foundation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+# http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,49 +14,48 @@
 
 # bbsim dockerfile
 
-ARG TAG=latest
-ARG REGISTRY=
-ARG REPOSITORY=
+# builder parent
+FROM golang:1.10-stretch as builder
 
-#builder parent
-FROM ubuntu:16.04
+# install prereqs
+ENV PROTOC_VERSION 3.6.1
+ENV PROTOC_SHA256SUM 6003de742ea3fcf703cfec1cd4a3380fd143081a2eb0e559065563496af27807
 
-MAINTAINER Voltha Community <info@opennetworking.org>
+RUN apt-get update \
+ && apt-get install -y unzip libpcap-dev \
+ && curl -L -o /tmp/protoc-${PROTOC_VERSION}-linux-x86_64.zip https://github.com/google/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip \
+ && echo "$PROTOC_SHA256SUM  /tmp/protoc-${PROTOC_VERSION}-linux-x86_64.zip" | sha256sum -c - \
+ && unzip /tmp/protoc-${PROTOC_VERSION}-linux-x86_64.zip -d /tmp/protoc3 \
+ && mv /tmp/protoc3/bin/* /usr/local/bin/ \
+ && mv /tmp/protoc3/include/* /usr/local/include/ \
+ && go get -v github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway \
+ && go get -v github.com/golang/protobuf/protoc-gen-go
 
-# Install required packages
-RUN apt-get update && apt-get install -y wget git make libpcap-dev gcc unzip
-ARG version="1.9.3."
-RUN wget https://storage.googleapis.com/golang/go${version}linux-amd64.tar.gz -P /tmp \
-    && tar -C /usr/local -xzf /tmp/go${version}linux-amd64.tar.gz \
-    && rm /tmp/go${version}linux-amd64.tar.gz
+# copy and build
+WORKDIR /go/src/gerrit.opencord.org/voltha-bbsim
+COPY . /go/src/gerrit.opencord.org/voltha-bbsim
 
-# Set PATH
-ENV GOPATH $HOME/go
-ENV PATH /usr/local/go/bin:/go/bin:$PATH
+RUN make bbsim
 
-# Copy source code
-RUN mkdir -p $GOPATH/src/gerrit.opencord.org/voltha-bbsim
-COPY . $GOPATH/src/gerrit.opencord.org/voltha-bbsim
+# runtime parent
+FROM golang:1.10-stretch
 
-# Install golang protobuf and pcap support
-RUN wget https://github.com/google/protobuf/releases/download/v3.6.0/protoc-3.6.0-linux-x86_64.zip -P /tmp/ \
-&& unzip /tmp/protoc-3.6.0-linux-x86_64.zip -d /tmp/ \
-&& mv /tmp/bin/* /usr/local/bin/ \
-&& mv /tmp/include/* /usr/local/include/ \
-&& go get -u github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway \
-&& go get -u github.com/golang/protobuf/protoc-gen-go \
-&& go get -u github.com/google/gopacket/pcap \
-&& go get -u golang.org/x/net/context \
-&& go get -u google.golang.org/grpc
+# runtime prereqs
+# the symlink on libpcap is because both alpine and debian come with 1.8.x, but
+# debian symlinks it to 0.8 for historical reasons:
+# https://packages.debian.org/stretch/libpcap0.8-dev
+RUN apt-get update \
+ && apt-get install -y libpcap-dev wpasupplicant isc-dhcp-server network-manager\
+ && ln -s /usr/lib/libpcap.so.1.8.1 /usr/lib/libpcap.so.0.8
 
-# ... Install utilities & config
-RUN apt-get update && apt-get install -y wpasupplicant isc-dhcp-server
 COPY ./config/wpa_supplicant.conf /etc/wpa_supplicant/
 COPY ./config/isc-dhcp-server /etc/default/
 COPY ./config/dhcpd.conf /etc/dhcp/
 RUN mv /usr/sbin/dhcpd /usr/local/bin/ \
-&& mv /sbin/dhclient /usr/local/bin/
+&& mv /sbin/dhclient /usr/local/bin/ \
+&& touch /var/lib/dhcp/dhcpd.leases
 
-WORKDIR $GOPATH/src/gerrit.opencord.org/voltha-bbsim
-RUN make bbsim
+WORKDIR /app
+COPY --from=builder /go/src/gerrit.opencord.org/voltha-bbsim/bbsim /app/bbsim
 
+CMD [ '/app/bbsim' ]

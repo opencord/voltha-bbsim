@@ -17,10 +17,10 @@
 package core
 
 import (
+	"errors"
 	"gerrit.opencord.org/voltha-bbsim/device"
 	"gerrit.opencord.org/voltha-bbsim/protos"
 	"gerrit.opencord.org/voltha-bbsim/setup"
-	"errors"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
@@ -51,6 +51,9 @@ type Server struct {
 	DhcpWait     int
 	DhcpServerIP string
 	gRPCserver   *grpc.Server
+	VethEnv      []string
+	TestFlag     bool
+	Processes    []string
 }
 
 type Packet struct {
@@ -58,7 +61,15 @@ type Packet struct {
 	Pkt  gopacket.Packet
 }
 
-func CreateServer(oltid uint32, npon uint32, nonus uint32, aaawait int, dhcpwait int, ip string, g *grpc.Server, mode Mode, e chan int) *Server {
+func (s *Server)Initialize(){
+	s.VethEnv = []string{}
+	s.Endchan = make(chan int)
+	s.TestFlag = false
+	s.Processes = []string{}
+	s.Ioinfos = []*Ioinfo{}
+}
+
+func Create(oltid uint32, npon uint32, nonus uint32, aaawait int, dhcpwait int, ip string, g *grpc.Server, mode Mode, e chan int) *Server {
 	s := new(Server)
 	s.Olt = device.CreateOlt(oltid, npon, 1)
 	nnni := s.Olt.NumNniIntf
@@ -70,6 +81,8 @@ func CreateServer(oltid uint32, npon uint32, nonus uint32, aaawait int, dhcpwait
 	s.gRPCserver = g
 	s.Mode = mode
 	s.Endchan = e
+	s.VethEnv = []string{}
+	s.TestFlag = false
 	for intfid := nnni; intfid < npon+nnni; intfid++ {
 		s.Onumap[intfid] = device.CreateOnus(oltid, intfid, nonus, nnni)
 	}
@@ -80,14 +93,21 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 	// Activate OLT
 	olt := s.Olt
 	oltid := olt.ID
-	vethenv := []string{}
 	wg := &sync.WaitGroup{}
+
+	// DEBUG
+	log.Printf("pointer@activateOLT %p", s)
+	log.Printf("Ioinfos:%v\n", s.Ioinfos)
+	log.Printf("OLT Status:%v\n", s.Olt.OperState)
+	log.Printf("ONUmap:%v\n", s.Onumap)
+	log.Printf("VethEnv:%v\n", s.VethEnv)
+	log.Printf("Processes:%v\n", s.Processes)
 
 	if err := sendOltInd(stream, olt); err != nil {
 		return err
 	}
 	olt.OperState = "up"
-	olt.InternalState = device.OLT_UP
+	*olt.InternalState = device.OLT_UP
 	log.Printf("OLT %s sent OltInd.\n", olt.Name)
 
 	// OLT sends Interface Indication to Adapter
@@ -99,7 +119,7 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 
 	// OLT sends Operation Indication to Adapter after activating each interface
 	//time.Sleep(IF_UP_TIME * time.Second)
-	olt.InternalState = device.PONIF_UP
+	*olt.InternalState = device.PONIF_UP
 	if err := sendOperInd(stream, olt); err != nil {
 		log.Printf("[ERROR] Fail to sendOperInd: %v\n", err)
 		return err
@@ -122,6 +142,7 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 			break
 		}
 	}
+
 	for intfid, _ := range s.Onumap {
 		sendOnuInd(stream, s.Onumap[intfid])
 		log.Printf("OLT id:%d sent ONUInd.\n", olt.ID)
@@ -133,35 +154,17 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 		<-s.Endchan
 		log.Println("core server thread receives close !")
 	} else if s.Mode == AAA || s.Mode == BOTH {
+		s.TestFlag = true
 		var err error
-		s.Ioinfos = []*Ioinfo{}
-		for intfid, _ := range s.Onumap {
-			for i := 0; i < len(s.Onumap[intfid]); i++ {
-				var handler *pcap.Handle
-				onuid := s.Onumap[intfid][i].OnuID
-				uniup, unidw := makeUniName(oltid, intfid, onuid)
-				if handler, vethenv, err = setupVethHandler(uniup, unidw, vethenv); err != nil {
-					return err
-				}
-				iinfo := Ioinfo{name: uniup, iotype: "uni", ioloc: "inside", intfid: intfid, onuid: onuid, handler: handler}
-				s.Ioinfos = append(s.Ioinfos, &iinfo)
-				oinfo := Ioinfo{name: unidw, iotype: "uni", ioloc: "outside", intfid: intfid, onuid: onuid, handler: nil}
-				s.Ioinfos = append(s.Ioinfos, &oinfo)
-			}
-		}
-		var handler *pcap.Handle
-		nniup, nnidw := makeNniName(oltid)
-		if handler, vethenv, err = setupVethHandler(nniup, nnidw, vethenv); err != nil {
+		s.Ioinfos, s.VethEnv, err = createIoinfos(oltid, s.VethEnv, s.Onumap)
+		log.Println("s.VethEnv", s.VethEnv)
+		if err != nil {
 			return err
 		}
-		iinfo := Ioinfo{name: nnidw, iotype: "nni", ioloc: "inside", intfid: 1, handler: handler}
-		s.Ioinfos = append(s.Ioinfos, &iinfo)
-		oinfo := Ioinfo{name: nnidw, iotype: "nni", ioloc: "outside", intfid: 1, handler: nil}
-		s.Ioinfos = append(s.Ioinfos, &oinfo)
 
 		errchan := make(chan error)
 		go func() {
-			<-errchan
+			<- errchan
 			close(s.Endchan)
 		}()
 
@@ -171,6 +174,7 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 				log.Println("runPacketInDaemon Done")
 				wg.Done()
 			}()
+
 			err := s.runPacketInDaemon(stream)
 			if err != nil {
 				errchan <- err
@@ -184,16 +188,8 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 				log.Println("exeAAATest Done")
 				wg.Done()
 			}()
-			infos, err := s.getUniIoinfos("outside")
-			if err != nil {
-				errchan <- err
-				return
-			}
-			univeths := []string{}
-			for _, info := range infos {
-				univeths = append(univeths, info.name)
-			}
-			err = s.exeAAATest(univeths)
+
+			err = s.exeAAATest()
 			if err != nil {
 				errchan <- err
 				return
@@ -204,19 +200,8 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 					defer func() {
 						log.Println("exeDHCPTest Done")
 					}()
-					info, err := s.identifyNniIoinfo("outside")
-					setup.ActivateDHCPServer(info.name, s.DhcpServerIP)
 
-					infos, err := s.getUniIoinfos("outside")
-					if err != nil {
-						errchan <- err
-						return
-					}
-					univeths := []string{}
-					for _, info := range infos {
-						univeths = append(univeths, info.name)
-					}
-					err = s.exeDHCPTest(univeths)
+					err := s.exeDHCPTest()
 					if err != nil {
 						errchan <- err
 						return
@@ -225,10 +210,43 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 			}
 		}()
 		wg.Wait()
-		tearDown(vethenv) // Grace teardown
+		cleanUpVeths(s.VethEnv) // Grace teardown
+		pnames := s.Processes
+		killProcesses(pnames)
 		log.Println("Grace shutdown down")
 	}
 	return nil
+}
+
+func createIoinfos(oltid uint32, vethenv []string, onumap map[uint32][]*device.Onu)([]*Ioinfo, []string, error){
+	ioinfos := []*Ioinfo{}
+	var err error
+	for intfid, _ := range onumap {
+		for i := 0; i < len(onumap[intfid]); i++ {
+			var handler *pcap.Handle
+			onuid := onumap[intfid][i].OnuID
+			uniup, unidw := makeUniName(oltid, intfid, onuid)
+			if handler, vethenv, err = setupVethHandler(uniup, unidw, vethenv); err != nil {
+				return ioinfos, vethenv, err
+			}
+			iinfo := Ioinfo{name: uniup, iotype: "uni", ioloc: "inside", intfid: intfid, onuid: onuid, handler: handler}
+			ioinfos = append(ioinfos, &iinfo)
+			oinfo := Ioinfo{name: unidw, iotype: "uni", ioloc: "outside", intfid: intfid, onuid: onuid, handler: nil}
+			ioinfos = append(ioinfos, &oinfo)
+		}
+	}
+
+	var handler *pcap.Handle
+	nniup, nnidw := makeNniName(oltid)
+	if handler, vethenv, err = setupVethHandler(nniup, nnidw, vethenv); err != nil {
+		return ioinfos, vethenv, err
+	}
+	//TODO: Intfid should be modified
+	iinfo := Ioinfo{name: nnidw, iotype: "nni", ioloc: "inside", intfid: 1, handler: handler}
+	ioinfos = append(ioinfos, &iinfo)
+	oinfo := Ioinfo{name: nniup, iotype: "nni", ioloc: "outside", intfid: 1, handler: nil}
+	ioinfos = append(ioinfos, &oinfo)
+	return ioinfos, vethenv, nil
 }
 
 func (s *Server) runPacketInDaemon(stream openolt.Openolt_EnableIndicationServer) error {
@@ -268,6 +286,7 @@ func (s *Server) runPacketInDaemon(stream openolt.Openolt_EnableIndicationServer
 				log.Println("[WARNING] This packet does not come from UNI !")
 				continue
 			}
+
 			intfid := unipkt.Info.intfid
 			onuid := unipkt.Info.onuid
 			gemid, _ := getGemPortID(intfid, onuid)
@@ -286,17 +305,20 @@ func (s *Server) runPacketInDaemon(stream openolt.Openolt_EnableIndicationServer
 			} else {
 				continue
 			}
+
 			log.Printf("sendPktInd intfid:%d (onuid: %d) gemid:%d\n", intfid, onuid, gemid)
 			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "pon", IntfId: intfid, GemportId: gemid, Pkt: pkt.Data()}}
 			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
 				log.Printf("[ERROR] Failed to send PktInd indication. %v\n", err)
 				return err
 			}
+
 		case nnipkt := <-nnichannel:
 			if nnipkt.Info == nil || nnipkt.Info.iotype != "nni" {
 				log.Println("[WARNING] This packet does not come from NNI !")
 				continue
 			}
+
 			log.Println("Received packet in grpc Server from NNI.")
 			intfid := nnipkt.Info.intfid
 			pkt := nnipkt.Pkt
@@ -306,6 +328,7 @@ func (s *Server) runPacketInDaemon(stream openolt.Openolt_EnableIndicationServer
 				log.Printf("[ERROR] Failed to send PktInd indication. %v\n", err)
 				return err
 			}
+
 		case <-s.Endchan:
 			if flag == false {
 				log.Println("PacketInDaemon thread receives close !")
@@ -313,6 +336,7 @@ func (s *Server) runPacketInDaemon(stream openolt.Openolt_EnableIndicationServer
 				log.Println("Closed unichannel !")
 				close(nnichannel)
 				log.Println("Closed nnichannel !")
+
 				flag = true
 				return nil
 			}
@@ -321,40 +345,76 @@ func (s *Server) runPacketInDaemon(stream openolt.Openolt_EnableIndicationServer
 	return nil
 }
 
-func (s *Server) exeAAATest(vethenv []string) error {
+func (s *Server) exeAAATest() error {
 	log.Println("exeAAATest Start")
-	for i := 0; i < s.AAAWait; i++ {
+	infos, err := s.getUniIoinfos("outside")
+	if err != nil {
+		return err
+	}
+
+	univeths := []string{}
+	for _, info := range infos {
+		univeths = append(univeths, info.name)
+	}
+
+	for  {
 		select {
 		case <-s.Endchan:
 			log.Println("exeAAATest thread receives close !")
 			return nil
-		default:
-			log.Println("exeAAATest is now sleeping....")
-			time.Sleep(time.Second)
+		case <- time.After(time.Second * time.Duration(s.AAAWait)):
+			log.Println("timeout")
+			err = setup.ActivateWPASups(univeths)
+			if err != nil {
+				return err
+			}
+			s.Processes = append(s.Processes, "wpa_supplicant")
+			log.Println("s.Processes:", s.Processes)
+			return nil
 		}
-	}
-	err := setup.ActivateWPASups(vethenv)
-	if err != nil {
-		return err
 	}
 	return nil
 }
 
-func (s *Server) exeDHCPTest(vethenv []string) error {
+func (s *Server) exeDHCPTest() error {
 	log.Println("exeDHCPTest Start")
-	for i := 0; i < s.DhcpWait; i++ {
+	info, err := s.identifyNniIoinfo("outside")
+
+	if err != nil {
+		return err
+	}
+
+	err = setup.ActivateDHCPServer(info.name, s.DhcpServerIP)
+	if err != nil {
+		return err
+	}
+	s.Processes = append(s.Processes, "dhcpd")
+
+	infos, err := s.getUniIoinfos("outside")
+	if err != nil {
+		return err
+	}
+
+	univeths := []string{}
+	for _, info := range infos {
+		univeths = append(univeths, info.name)
+	}
+
+	for  {
 		select {
 		case <-s.Endchan:
 			log.Println("exeDHCPTest thread receives close !")
 			return nil
-		default:
-			log.Println("exeDHCPTest is now sleeping....")
-			time.Sleep(time.Second)
+		case <- time.After(time.Second * time.Duration(s.DhcpWait)):
+			log.Println("timeout")
+			err = setup.ActivateDHCPClients(univeths)
+			if err != nil {
+				return err
+			}
+			s.Processes = append(s.Processes, "dhclient")
+			log.Println("s.Processes:", s.Processes)
+			return nil
 		}
-	}
-	err := setup.ActivateDHCPClients(vethenv)
-	if err != nil {
-		return err
 	}
 	return nil
 }
@@ -407,16 +467,12 @@ func (s *Server) uplinkPacketOut(rawpkt gopacket.Packet) error {
 func (s *Server) IsAllONUActive() bool {
 	for _, onus := range s.Onumap {
 		for _, onu := range onus {
-			if onu.InternalState != device.ONU_ACTIVATED {
+			if *onu.InternalState != device.ONU_ACTIVATED {
 				return false
 			}
 		}
 	}
 	return true
-}
-
-func getVID(onuid uint32) (uint16, error) {
-	return uint16(onuid), nil
 }
 
 func getGemPortID(intfid uint32, onuid uint32) (uint32, error) {
@@ -463,11 +519,18 @@ func makeNniName(oltid uint32) (upif string, dwif string) {
 	return
 }
 
-func tearDown(vethenv []string) error {
-	log.Println("tearDown()")
-	setup.KillAllWPASups()
-	setup.KillAllDHCPClients()
-	setup.TearVethDown(vethenv)
+func cleanUpVeths(vethenv []string) error {
+	if len(vethenv) > 0 {
+		log.Println("cleanUp veths !")
+		setup.TearVethDown(vethenv)
+	}
+	return nil
+}
+
+func killProcesses(pnames []string) error {
+	for _, pname := range  pnames {
+		setup.KillProcess(pname)
+	}
 	return nil
 }
 

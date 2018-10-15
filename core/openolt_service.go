@@ -34,12 +34,14 @@ func sendOltInd(stream openolt.Openolt_EnableIndicationServer, olt *device.Olt) 
 func sendIntfInd(stream openolt.Openolt_EnableIndicationServer, olt *device.Olt) error {
 	for i := uint32(0); i < olt.NumPonIntf+olt.NumNniIntf; i++ {
 		intf := olt.Intfs[i]
-		data := &openolt.Indication_IntfInd{&openolt.IntfIndication{IntfId: intf.IntfID, OperState: intf.OperState}}
-		if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-			log.Printf("Failed to send Intf [id: %d] indication : %v\n", i, err)
-			return err
+		if intf.Type == "pon"{	// There is no need to send IntfInd for NNI
+			data := &openolt.Indication_IntfInd{&openolt.IntfIndication{IntfId: intf.IntfID, OperState: intf.OperState}}
+			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
+				log.Printf("Failed to send Intf [id: %d] indication : %v\n", i, err)
+				return err
+			}
+			log.Printf("SendIntfInd olt:%d intf:%d (%s)\n", olt.ID, intf.IntfID, intf.Type)
 		}
-		log.Printf("SendIntfInd olt:%d intf:%d (%s)\n", olt.ID, intf.IntfID, intf.Type)
 	}
 	return nil
 }

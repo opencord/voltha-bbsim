@@ -73,7 +73,7 @@ func main() {
 	addressport := ip + ":" + strconv.Itoa(int(port))
 	endchan := make(chan int, 1)
 	listener, gserver, err := core.CreateGrpcServer(oltid, npon, nonus, addressport)
-	server := core.CreateServer(oltid, npon, nonus, aaawait, dhcpwait, dhcpservip, gserver, mode, endchan)
+	server := core.Create(oltid, npon, nonus, aaawait, dhcpwait, dhcpservip, gserver, mode, endchan)
 	if err != nil {
 		log.Println(err)
 	}

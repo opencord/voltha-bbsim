@@ -26,7 +26,7 @@ type Olt struct {
 	SerialNumber       string
 	Manufacture        string
 	Name               string
-	InternalState      oltState
+	InternalState      *oltState
 	OperState          string
 	Intfs              []intf
 	HeartbeatSignature uint32
@@ -51,7 +51,8 @@ func CreateOlt(oltid uint32, npon uint32, nnni uint32) *Olt {
 	olt.NumPonIntf = npon
 	olt.NumNniIntf = nnni
 	olt.Name = "BBSIM OLT"
-	olt.InternalState = PRE_ENABLE
+	olt.InternalState = new(oltState)
+	*olt.InternalState = PRE_ENABLE
 	olt.OperState = "up"
 	olt.Intfs = make([]intf, olt.NumPonIntf+olt.NumNniIntf)
 	olt.HeartbeatSignature = oltid
@@ -66,4 +67,19 @@ func CreateOlt(oltid uint32, npon uint32, nnni uint32) *Olt {
 		olt.Intfs[i].Type = "pon"
 	}
 	return &olt
+}
+
+func (olt *Olt)InitializeStatus(){
+	*olt.InternalState = PRE_ENABLE
+	olt.OperState = "up"
+	for i := uint32(0); i < olt.NumNniIntf; i++ {
+		olt.Intfs[i].IntfID = i
+		olt.Intfs[i].OperState = "up"
+		olt.Intfs[i].Type = "nni"
+	}
+	for i := uint32(olt.NumNniIntf); i < olt.NumPonIntf+olt.NumNniIntf; i++ {
+		olt.Intfs[i].IntfID = i
+		olt.Intfs[i].OperState = "up"
+		olt.Intfs[i].Type = "pon"
+	}
 }
