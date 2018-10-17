@@ -25,11 +25,16 @@ import (
 	"google.golang.org/grpc"
 	"log"
 	"net"
+	"os/exec"
 )
 
 // gRPC Service
 func (s *Server) DisableOlt(c context.Context, empty *openolt.Empty) (*openolt.Empty, error) {
 	log.Printf("OLT receives DisableOLT()\n")
+	if err := sendOltIndDown(*s.EnableServer); err != nil {
+		return new(openolt.Empty), err
+	}
+	log.Println("Successfuly sent OLT DOWN indication !")
 	return new(openolt.Empty), nil
 }
 
@@ -134,15 +139,16 @@ func (s *Server) DisablePonIf(c context.Context, intf *openolt.Interface) (*open
 
 func (s *Server) Reboot(c context.Context, empty *openolt.Empty) (*openolt.Empty, error) {
 	log.Printf("OLT %d receives Reboot ().\n", s.Olt.ID)
-	log.Printf("pointer@Reboot %p", s)
 	// Initialize OLT & Env
 	if s.TestFlag == true{
-		log.Println("Initialize by Reboot")
+		log.Println("Initialized by Reboot")
 		cleanUpVeths(s.VethEnv)
 		close(s.Endchan)
 		processes := s.Processes
 		log.Println("processes:", processes)
 		killProcesses(processes)
+		exec.Command("rm", "/var/run/dhcpd.pid").Run()
+		exec.Command("touch", "/var/run/dhcpd.pid").Run()
 		s.Initialize()
 	}
 	olt := s.Olt
@@ -159,6 +165,7 @@ func (s *Server) EnableIndication(empty *openolt.Empty, stream openolt.Openolt_E
 	defer func() {
 		s.gRPCserver.Stop()
 	}()
+	s.EnableServer = &stream
 	log.Printf("OLT receives EnableInd.\n")
 	if err := s.activateOLT(stream); err != nil {
 		log.Printf("Failed to activate OLT: %v\n", err)

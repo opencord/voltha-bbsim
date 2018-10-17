@@ -34,7 +34,7 @@ docker run -it --rm --privileged=true --expose=50060 --network=compose_default v
 {
     "state": "HEALTHY"
 }
-(voltha) preprovision_olt -t openolt -H <BBSim Docker container IP>
+(voltha) preprovision_olt -t bbsimolt -H <BBSim Docker container IP>
 success (device id = <deviceid>)
 (voltha) enable
 enabling <deviceid>

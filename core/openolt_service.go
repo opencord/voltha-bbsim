@@ -22,10 +22,19 @@ import (
 	"log"
 )
 
-func sendOltInd(stream openolt.Openolt_EnableIndicationServer, olt *device.Olt) error {
+func sendOltIndUp(stream openolt.Openolt_EnableIndicationServer, olt *device.Olt) error {
 	data := &openolt.Indication_OltInd{OltInd: &openolt.OltIndication{OperState: "up"}}
 	if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-		log.Printf("Failed to send OLT indication: %v\n", err)
+		log.Printf("Failed to send OLT UP indication: %v\n", err)
+		return err
+	}
+	return nil
+}
+
+func sendOltIndDown(stream openolt.Openolt_EnableIndicationServer) error {
+	data := &openolt.Indication_OltInd{OltInd: &openolt.OltIndication{OperState: "down"}}
+	if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
+		log.Printf("Failed to send OLT DOWN indication: %v\n", err)
 		return err
 	}
 	return nil

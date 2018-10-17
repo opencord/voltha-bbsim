@@ -54,6 +54,7 @@ type Server struct {
 	VethEnv      []string
 	TestFlag     bool
 	Processes    []string
+	EnableServer *openolt.Openolt_EnableIndicationServer
 }
 
 type Packet struct {
@@ -86,6 +87,7 @@ func Create(oltid uint32, npon uint32, nonus uint32, aaawait int, dhcpwait int, 
 	for intfid := nnni; intfid < npon+nnni; intfid++ {
 		s.Onumap[intfid] = device.CreateOnus(oltid, intfid, nonus, nnni)
 	}
+	s.EnableServer = new(openolt.Openolt_EnableIndicationServer)
 	return s
 }
 
@@ -95,15 +97,7 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 	oltid := olt.ID
 	wg := &sync.WaitGroup{}
 
-	// DEBUG
-	log.Printf("pointer@activateOLT %p", s)
-	log.Printf("Ioinfos:%v\n", s.Ioinfos)
-	log.Printf("OLT Status:%v\n", s.Olt.OperState)
-	log.Printf("ONUmap:%v\n", s.Onumap)
-	log.Printf("VethEnv:%v\n", s.VethEnv)
-	log.Printf("Processes:%v\n", s.Processes)
-
-	if err := sendOltInd(stream, olt); err != nil {
+	if err := sendOltIndUp(stream, olt); err != nil {
 		return err
 	}
 	olt.OperState = "up"
@@ -296,12 +290,12 @@ func (s *Server) runPacketInDaemon(stream openolt.Openolt_EnableIndicationServer
 			ethtype := le.EthernetType
 			if ethtype == 0x888e {
 				log.Printf("Received upstream packet is EAPOL.")
-				log.Println(unipkt.Pkt.Dump())
-				log.Println(pkt.Dump())
+				//log.Println(unipkt.Pkt.Dump())
+				//log.Println(pkt.Dump())
 			} else if layerDHCP := pkt.Layer(layers.LayerTypeDHCPv4); layerDHCP != nil {
 				log.Printf("Received upstream packet is DHCP.")
-				log.Println(unipkt.Pkt.Dump())
-				log.Println(pkt.Dump())
+				//log.Println(unipkt.Pkt.Dump())
+				//log.Println(pkt.Dump())
 			} else {
 				continue
 			}
@@ -336,7 +330,6 @@ func (s *Server) runPacketInDaemon(stream openolt.Openolt_EnableIndicationServer
 				log.Println("Closed unichannel !")
 				close(nnichannel)
 				log.Println("Closed nnichannel !")
-
 				flag = true
 				return nil
 			}
@@ -346,7 +339,7 @@ func (s *Server) runPacketInDaemon(stream openolt.Openolt_EnableIndicationServer
 }
 
 func (s *Server) exeAAATest() error {
-	log.Println("exeAAATest Start")
+	log.Println("exeAAATest starts to sleep....")
 	infos, err := s.getUniIoinfos("outside")
 	if err != nil {
 		return err
@@ -363,7 +356,7 @@ func (s *Server) exeAAATest() error {
 			log.Println("exeAAATest thread receives close !")
 			return nil
 		case <- time.After(time.Second * time.Duration(s.AAAWait)):
-			log.Println("timeout")
+			log.Println("exeAAATest Start")
 			err = setup.ActivateWPASups(univeths)
 			if err != nil {
 				return err
@@ -377,7 +370,7 @@ func (s *Server) exeAAATest() error {
 }
 
 func (s *Server) exeDHCPTest() error {
-	log.Println("exeDHCPTest Start")
+	log.Println("exeDHCPTest starts to sleep....")
 	info, err := s.identifyNniIoinfo("outside")
 
 	if err != nil {
@@ -406,7 +399,7 @@ func (s *Server) exeDHCPTest() error {
 			log.Println("exeDHCPTest thread receives close !")
 			return nil
 		case <- time.After(time.Second * time.Duration(s.DhcpWait)):
-			log.Println("timeout")
+			log.Println("exeDHCPTest Start")
 			err = setup.ActivateDHCPClients(univeths)
 			if err != nil {
 				return err
@@ -426,10 +419,10 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 		ethtype := pkt.EthernetType
 		if ethtype == 0x888e {
 			log.Printf("Received downstream packet is EAPOL.")
-			log.Println(rawpkt.Dump())
+			//log.Println(rawpkt.Dump())
 		} else if layerDHCP := rawpkt.Layer(layers.LayerTypeDHCPv4); layerDHCP != nil {
 			log.Printf("Received downstream packet is DHCP.")
-			log.Println(rawpkt.Dump())
+			//log.Println(rawpkt.Dump())
 			rawpkt, _, _ = PopVLAN(rawpkt)
 			rawpkt, _, _ = PopVLAN(rawpkt)
 		} else {
