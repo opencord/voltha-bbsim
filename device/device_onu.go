@@ -18,8 +18,9 @@ package device
 
 import (
 	"log"
-	"gerrit.opencord.org/voltha-bbsim/protos"
 	"reflect"
+
+	"gerrit.opencord.org/voltha-bbsim/protos"
 )
 
 type onuState int
@@ -51,14 +52,14 @@ func CreateOnus(oltid uint32, intfid uint32, nonus uint32, nnni uint32) []*Onu {
 		onu.IntfID = intfid
 		onu.OperState = "up"
 		onu.SerialNumber = new(openolt.SerialNumber)
-		onu.SerialNumber.VendorId = []byte("NONE")
+		onu.SerialNumber.VendorId = []byte("BBSM")
 		onu.SerialNumber.VendorSpecific = createSN(oltid, intfid, uint32(i))
 		onus = append(onus, &onu)
 	}
 	return onus
 }
 
-func (onu *Onu) InitializeStatus(){
+func (onu *Onu) InitializeStatus() {
 	onu.OperState = "up"
 	*onu.InternalState = ONU_PRE_ACTIVATED
 }
