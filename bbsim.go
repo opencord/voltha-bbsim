@@ -17,8 +17,6 @@
 package main
 
 import (
-	"gerrit.opencord.org/voltha-bbsim/protos"
-	"gerrit.opencord.org/voltha-bbsim/core"
 	"flag"
 	"fmt"
 	"log"
@@ -28,6 +26,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"gerrit.opencord.org/voltha-bbsim/core"
+	"gerrit.opencord.org/voltha-bbsim/protos"
 )
 
 func printBanner() {
@@ -39,7 +40,7 @@ func printBanner() {
 	log.Println("/________/ /________/ /________/ /_/ /_/ /_/ /_/  ")
 }
 
-func getOptions() (uint32, string, uint32, uint32, uint32, int, int, string, core.Mode) {
+func getOptions() (uint32, string, uint32, uint32, uint32, int, int, string, int, core.Mode) {
 	addressport := flag.String("H", ":50060", "IP address:port")
 	oltid := flag.Int("id", 0, "OLT-ID")
 	nintfs := flag.Int("i", 1, "Number of PON-IF ports")
@@ -48,6 +49,7 @@ func getOptions() (uint32, string, uint32, uint32, uint32, int, int, string, cor
 	aaawait := flag.Int("a", 30, "Wait time (sec) for activation WPA supplicants")
 	dhcpwait := flag.Int("d", 10, "Wait time (sec) for activation DHCP clients")
 	dhcpservip := flag.String("s", "182.21.0.1", "DHCP Server IP Address")
+	delay := flag.Int("delay", 1, "Delay between ONU events")
 	mode := core.DEFAULT
 	flag.Parse()
 	if *modeopt == "aaa" {
@@ -58,13 +60,13 @@ func getOptions() (uint32, string, uint32, uint32, uint32, int, int, string, cor
 	address := strings.Split(*addressport, ":")[0]
 	tmp, _ := strconv.Atoi(strings.Split(*addressport, ":")[1])
 	port := uint32(tmp)
-	return uint32(*oltid), address, port, uint32(*nintfs), uint32(*nonus), *aaawait, *dhcpwait, *dhcpservip, mode
+	return uint32(*oltid), address, port, uint32(*nintfs), uint32(*nonus), *aaawait, *dhcpwait, *dhcpservip, *delay, mode
 }
 
 func main() {
 	// CLI Shows up
 	printBanner()
-	oltid, ip, port, npon, nonus, aaawait, dhcpwait, dhcpservip, mode := getOptions()
+	oltid, ip, port, npon, nonus, aaawait, dhcpwait, dhcpservip, delay, mode := getOptions()
 	log.Printf("ip:%s, baseport:%d, npon:%d, nonus:%d, mode:%d\n", ip, port, npon, nonus, mode)
 
 	// Set up gRPC Server
@@ -73,7 +75,7 @@ func main() {
 	addressport := ip + ":" + strconv.Itoa(int(port))
 	endchan := make(chan int, 1)
 	listener, gserver, err := core.CreateGrpcServer(oltid, npon, nonus, addressport)
-	server := core.Create(oltid, npon, nonus, aaawait, dhcpwait, dhcpservip, gserver, mode, endchan)
+	server := core.Create(oltid, npon, nonus, aaawait, dhcpwait, dhcpservip, delay, gserver, mode, endchan)
 	if err != nil {
 		log.Println(err)
 	}

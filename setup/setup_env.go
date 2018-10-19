@@ -19,6 +19,7 @@ package setup
 import (
 	"log"
 	"os/exec"
+	"time"
 )
 
 const (
@@ -28,8 +29,10 @@ const (
 	NNI_VETH_DW_PFX = "sim_nd"
 )
 
-func ActivateWPASups(vethnames []string) error {
+func ActivateWPASups(vethnames []string, delay int) error {
 	for _, vethname := range vethnames {
+		time.Sleep(time.Duration(delay) * time.Second)
+		log.Printf("ActivateWPASups for interface %v\n", vethname)
 		if err := activateWPASupplicant(vethname); err != nil {
 			return err
 		}
@@ -37,8 +40,10 @@ func ActivateWPASups(vethnames []string) error {
 	return nil
 }
 
-func ActivateDHCPClients(vethnames []string) error {
+func ActivateDHCPClients(vethnames []string, delay int) error {
 	for _, vethname := range vethnames {
+		time.Sleep(time.Duration(delay) * time.Second)
+		log.Printf("activateDHCPClient for interface %v\n", vethname)
 		if err := activateDHCPClient(vethname); err != nil {
 			return err
 		}
@@ -103,21 +108,29 @@ func activateWPASupplicant(vethname string) (err error) {
 	conf := "/etc/wpa_supplicant/wpa_supplicant.conf"
 	err = exec.Command(cmd, "-D", "wired", "-i", vethname, "-c", conf).Start()
 	if err != nil {
-		log.Printf("[ERROR] Fail to activateWPASupplicant() for :%s %v\n", vethname, err)
+		log.Printf("[ERROR] Fail to activateWPASupplicant() for: %s %v\n", vethname, err)
 		return
 	}
-	log.Printf("activateWPASupplicant() for :%s\n", vethname)
+	log.Printf("activateWPASupplicant() for: %s\n", vethname)
 	return
 }
 
 func activateDHCPClient(vethname string) (err error) {
-	cmd := "/usr/local/bin/dhclient"
-	err = exec.Command(cmd, vethname).Start()
-	if err != nil {
-		log.Printf("[ERROR] Faile to activateWPASupplicant() for :%s %v\n", vethname, err)
-		return
+	log.Printf("activateDHCPClient() start for: %s\n", vethname)
+	cmd := exec.Command("/usr/local/bin/dhclient", vethname)
+	// if err := cmd.Run(); err != nil {
+	if err := cmd.Start(); err != nil {
+		log.Printf("[ERROR] Failed to activateDHCPClient() for: %s", vethname)
+		log.Panic(err)
 	}
-	log.Printf("activateDHCPClient() for: %s\n", vethname)
+
+	// if the dhclient commands return we got an IP,
+	// so kill it
+	// if err := KillProcess("/usr/local/bin/dhclient"); err != nil {
+	// 	log.Printf("[ERROR] Failed to kill activateDHCPClient() for: %s", vethname, err)
+	// }
+
+	log.Printf("activateDHCPClient() done for: %s\n", vethname)
 	return
 }
 

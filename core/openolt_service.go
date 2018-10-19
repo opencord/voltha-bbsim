@@ -17,9 +17,11 @@
 package core
 
 import (
-	"gerrit.opencord.org/voltha-bbsim/protos"
-	"gerrit.opencord.org/voltha-bbsim/device"
 	"log"
+	"time"
+
+	"gerrit.opencord.org/voltha-bbsim/device"
+	"gerrit.opencord.org/voltha-bbsim/protos"
 )
 
 func sendOltIndUp(stream openolt.Openolt_EnableIndicationServer, olt *device.Olt) error {
@@ -43,7 +45,7 @@ func sendOltIndDown(stream openolt.Openolt_EnableIndicationServer) error {
 func sendIntfInd(stream openolt.Openolt_EnableIndicationServer, olt *device.Olt) error {
 	for i := uint32(0); i < olt.NumPonIntf+olt.NumNniIntf; i++ {
 		intf := olt.Intfs[i]
-		if intf.Type == "pon"{	// There is no need to send IntfInd for NNI
+		if intf.Type == "pon" { // There is no need to send IntfInd for NNI
 			data := &openolt.Indication_IntfInd{&openolt.IntfIndication{IntfId: intf.IntfID, OperState: intf.OperState}}
 			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
 				log.Printf("Failed to send Intf [id: %d] indication : %v\n", i, err)
@@ -80,8 +82,9 @@ func sendOnuDiscInd(stream openolt.Openolt_EnableIndicationServer, onus []*devic
 	return nil
 }
 
-func sendOnuInd(stream openolt.Openolt_EnableIndicationServer, onus []*device.Onu) error {
+func sendOnuInd(stream openolt.Openolt_EnableIndicationServer, onus []*device.Onu, delay int) error {
 	for i, onu := range onus {
+		time.Sleep(time.Duration(delay) * time.Second)
 		data := &openolt.Indication_OnuInd{&openolt.OnuIndication{IntfId: onu.IntfID, OnuId: onu.OnuID, OperState: "up", AdminState: "up", SerialNumber: onu.SerialNumber}}
 		log.Printf("sendONUInd Onuid: %d\n", i)
 		if err := stream.Send(&openolt.Indication{Data: data}); err != nil {

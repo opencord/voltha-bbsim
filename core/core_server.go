@@ -17,6 +17,12 @@
 package core
 
 import (
+	"errors"
+	"log"
+	"strconv"
+	"sync"
+	"time"
+
 	"gerrit.opencord.org/voltha-bbsim/device"
 	"gerrit.opencord.org/voltha-bbsim/protos"
 	"gerrit.opencord.org/voltha-bbsim/setup"
@@ -24,11 +30,6 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"google.golang.org/grpc"
-	"errors"
-	"log"
-	"strconv"
-	"sync"
-	"time"
 )
 
 type Mode int
@@ -50,6 +51,7 @@ type Server struct {
 	AAAWait      int
 	DhcpWait     int
 	DhcpServerIP string
+	Delay        int
 	gRPCserver   *grpc.Server
 	VethEnv      []string
 	TestFlag     bool
@@ -63,7 +65,7 @@ type Packet struct {
 	Pkt  gopacket.Packet
 }
 
-func (s *Server)Initialize(){
+func (s *Server) Initialize() {
 	s.VethEnv = []string{}
 	s.Endchan = make(chan int)
 	s.TestFlag = false
@@ -71,7 +73,7 @@ func (s *Server)Initialize(){
 	s.Ioinfos = []*Ioinfo{}
 }
 
-func Create(oltid uint32, npon uint32, nonus uint32, aaawait int, dhcpwait int, ip string, g *grpc.Server, mode Mode, e chan int) *Server {
+func Create(oltid uint32, npon uint32, nonus uint32, aaawait int, dhcpwait int, ip string, delay int, g *grpc.Server, mode Mode, e chan int) *Server {
 	s := new(Server)
 	s.Olt = device.CreateOlt(oltid, npon, 1)
 	nnni := s.Olt.NumNniIntf
@@ -81,6 +83,7 @@ func Create(oltid uint32, npon uint32, nonus uint32, aaawait int, dhcpwait int, 
 	s.DhcpWait = dhcpwait
 	s.DhcpServerIP = ip
 	s.gRPCserver = g
+	s.Delay = delay
 	s.Mode = mode
 	s.Endchan = e
 	s.VethEnv = []string{}
@@ -92,11 +95,11 @@ func Create(oltid uint32, npon uint32, nonus uint32, aaawait int, dhcpwait int, 
 
 	//TODO: To be fixed
 	s.CtagMap = make(map[string]uint32)
-	for i := 0; i < MAX_ONUS_PER_PON; i ++ {
+	for i := 0; i < MAX_ONUS_PER_PON; i++ {
 		oltid := s.Olt.ID
 		intfid := uint32(1)
 		sn := convB2S(device.CreateSN(oltid, intfid, uint32(i)))
-		s.CtagMap[sn] = uint32(900 + i)	// This is hard coded for BBWF
+		s.CtagMap[sn] = uint32(900 + i) // This is hard coded for BBWF
 	}
 	return s
 }
@@ -148,7 +151,7 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 	}
 
 	for intfid, _ := range s.Onumap {
-		sendOnuInd(stream, s.Onumap[intfid])
+		sendOnuInd(stream, s.Onumap[intfid], s.Delay)
 		log.Printf("OLT id:%d sent ONUInd.\n", olt.ID)
 	}
 
@@ -168,7 +171,7 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 
 		errchan := make(chan error)
 		go func() {
-			<- errchan
+			<-errchan
 			close(s.Endchan)
 		}()
 
@@ -222,7 +225,7 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 	return nil
 }
 
-func createIoinfos(oltid uint32, vethenv []string, onumap map[uint32][]*device.Onu)([]*Ioinfo, []string, error){
+func createIoinfos(oltid uint32, vethenv []string, onumap map[uint32][]*device.Onu) ([]*Ioinfo, []string, error) {
 	ioinfos := []*Ioinfo{}
 	var err error
 	for intfid, _ := range onumap {
@@ -309,7 +312,7 @@ func (s *Server) runPacketInDaemon(stream openolt.Openolt_EnableIndicationServer
 				//C-TAG
 				onu, _ := s.getOnuByID(onuid)
 				sn := convB2S(onu.SerialNumber.VendorSpecific)
-				if ctag, ok := s.CtagMap[sn]; ok == true{
+				if ctag, ok := s.CtagMap[sn]; ok == true {
 					tagpkt, err := PushVLAN(pkt, uint16(ctag))
 					if err != nil {
 						log.Println("Error happend in C-tag tagging")
@@ -373,14 +376,14 @@ func (s *Server) exeAAATest() error {
 		univeths = append(univeths, info.name)
 	}
 
-	for  {
+	for {
 		select {
 		case <-s.Endchan:
 			log.Println("exeAAATest thread receives close !")
 			return nil
-		case <- time.After(time.Second * time.Duration(s.AAAWait)):
+		case <-time.After(time.Second * time.Duration(s.AAAWait)):
 			log.Println("exeAAATest Start")
-			err = setup.ActivateWPASups(univeths)
+			err = setup.ActivateWPASups(univeths, s.Delay)
 			if err != nil {
 				return err
 			}
@@ -416,14 +419,14 @@ func (s *Server) exeDHCPTest() error {
 		univeths = append(univeths, info.name)
 	}
 
-	for  {
+	for {
 		select {
 		case <-s.Endchan:
 			log.Println("exeDHCPTest thread receives close !")
 			return nil
-		case <- time.After(time.Second * time.Duration(s.DhcpWait)):
+		case <-time.After(time.Second * time.Duration(s.DhcpWait)):
 			log.Println("exeDHCPTest Start")
-			err = setup.ActivateDHCPClients(univeths)
+			err = setup.ActivateDHCPClients(univeths, s.Delay)
 			if err != nil {
 				return err
 			}
@@ -479,7 +482,7 @@ func (s *Server) uplinkPacketOut(rawpkt gopacket.Packet) error {
 	return nil
 }
 
-func (s *Server)IsAllOnuActive(regonus map[uint32][]*device.Onu) bool {
+func (s *Server) IsAllOnuActive(regonus map[uint32][]*device.Onu) bool {
 	for _, onus := range regonus {
 		for _, onu := range onus {
 			if onu.GetIntStatus() != device.ONU_ACTIVATED {
@@ -543,7 +546,7 @@ func cleanUpVeths(vethenv []string) error {
 }
 
 func killProcesses(pnames []string) error {
-	for _, pname := range  pnames {
+	for _, pname := range pnames {
 		setup.KillProcess(pname)
 	}
 	return nil
@@ -584,7 +587,7 @@ func getVethHandler(vethname string) (*pcap.Handle, error) {
 func convB2S(b []byte) string {
 	s := ""
 	for _, i := range b {
-		s = s + strconv. FormatInt(int64(i/16), 16) + strconv. FormatInt(int64(i%16), 16)
+		s = s + strconv.FormatInt(int64(i/16), 16) + strconv.FormatInt(int64(i%16), 16)
 	}
 	return s
 }
