@@ -20,16 +20,16 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"gerrit.opencord.org/voltha-bbsim/common"
 	"errors"
-	"log"
 	"net"
 )
 
 func RecvWorker(io *Ioinfo, handler *pcap.Handle, r chan Packet) {
-	log.Printf("recvWorker runs. handler: %v", *handler)
+	logger.Debug("recvWorker runs. handler: %v", *handler)
 	packetSource := gopacket.NewPacketSource(handler, handler.LinkType())
 	for packet := range packetSource.Packets() {
-		log.Printf("recv packet from IF: %v \n", *handler)
+		logger.Debug("recv packet from IF: %v \n", *handler)
 		//log.Println(packet.Dump())
 		pkt := Packet{}
 		pkt.Info = io
@@ -41,18 +41,18 @@ func RecvWorker(io *Ioinfo, handler *pcap.Handle, r chan Packet) {
 func SendUni(handle *pcap.Handle, packet gopacket.Packet) {
 	err := handle.WritePacketData(packet.Data())
 	if err != nil {
-		log.Printf("Error in send packet to UNI-IF: %v e:%s\n", *handle, err)
+		logger.Error("Error in send packet to UNI-IF: %v e:%s\n", *handle, err)
 	}
-	log.Printf("Successfully send packet to UNI-IF: %v \n", *handle)
+	logger.Debug("Successfully send packet to UNI-IF: %v \n", *handle)
 	//log.Println(packet.Dump())
 }
 
 func SendNni(handle *pcap.Handle, packet gopacket.Packet) {
 	err := handle.WritePacketData(packet.Data())
 	if err != nil{
-		log.Printf("Error in send packet to NNI e:%s\n", err)
+		logger.Error("Error in send packet to NNI e:%s\n", err)
 	}
-	log.Printf("send packet to NNI-IF: %v \n", *handle)
+	logger.Debug("send packet to NNI-IF: %v \n", *handle)
 	//log.Println(packet.Dump())
 }
 
@@ -75,7 +75,7 @@ func PopVLAN(pkt gopacket.Packet) (gopacket.Packet, uint16, error) {
 				gopacket.Default,
 			)
 			vid := uint16(4095 & layer.VLANIdentifier)
-			log.Printf("Pop the 802.1Q header (VID: %d)", vid)
+			logger.Debug("Pop the 802.1Q header (VID: %d)", vid)
 			return retpkt, vid, nil
 		}
 	}
@@ -110,7 +110,7 @@ func PushVLAN(pkt gopacket.Packet, vid uint16) (gopacket.Packet, error) {
 			layers.LayerTypeEthernet,
 			gopacket.Default,
 		)
-		log.Printf("Push the 802.1Q header (VID: %d)", vid)
+		logger.Debug("Push the 802.1Q header (VID: %d)", vid)
 		return ret, nil
 	}
 	return nil, errors.New("failed to push vlan")

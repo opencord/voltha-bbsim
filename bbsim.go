@@ -26,7 +26,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-
+	"gerrit.opencord.org/voltha-bbsim/common"
 	"gerrit.opencord.org/voltha-bbsim/core"
 	"gerrit.opencord.org/voltha-bbsim/protos"
 )
@@ -67,7 +67,7 @@ func main() {
 	// CLI Shows up
 	printBanner()
 	oltid, ip, port, npon, nonus, aaawait, dhcpwait, dhcpservip, delay, mode := getOptions()
-	log.Printf("ip:%s, baseport:%d, npon:%d, nonus:%d, mode:%d\n", ip, port, npon, nonus, mode)
+	logger.Debug("ip:%s, baseport:%d, npon:%d, nonus:%d, mode:%d\n", ip, port, npon, nonus, mode)
 
 	// Set up gRPC Server
 	var wg sync.WaitGroup
@@ -77,7 +77,7 @@ func main() {
 	listener, gserver, err := core.CreateGrpcServer(oltid, npon, nonus, addressport)
 	server := core.Create(oltid, npon, nonus, aaawait, dhcpwait, dhcpservip, delay, gserver, mode, endchan)
 	if err != nil {
-		log.Println(err)
+		logger.Error("Failed to create gRPC server", err)
 	}
 	openolt.RegisterOpenoltServer(gserver, server)
 
@@ -99,5 +99,5 @@ func main() {
 	}()
 	wg.Wait()
 	time.Sleep(5 * time.Second)
-	log.Println("Reach to the end line")
+	logger.Debug("Reach to the end line")
 }

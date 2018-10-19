@@ -18,8 +18,8 @@ package core
 
 import (
 	"github.com/google/gopacket/pcap"
+	"gerrit.opencord.org/voltha-bbsim/common"
 	"errors"
-	"log"
 )
 
 type Ioinfo struct {
@@ -37,8 +37,8 @@ func (s *Server) identifyUniIoinfo(ioloc string, intfid uint32, onuid uint32) (*
 			return ioinfo, nil
 		}
 	}
-	err := errors.New("No matched Ioinfo is found !")
-	log.Println(err)
+	err := errors.New("No matched Ioinfo is found")
+	logger.Error("%s", err)
 	return nil, err
 }
 
@@ -48,8 +48,8 @@ func (s *Server) identifyNniIoinfo(ioloc string) (*Ioinfo, error) {
 			return ioinfo, nil
 		}
 	}
-	err := errors.New("No matched Ioinfo is found !")
-	log.Println(err)
+	err := errors.New("No matched Ioinfo is found")
+	logger.Error("%s", err)
 	return nil, err
 }
 
@@ -61,8 +61,8 @@ func (s *Server) getUniIoinfos(ioloc string) ([]*Ioinfo, error) {
 		}
 	}
 	if len(ioinfos) == 0 {
-		err := errors.New("No matched Ioinfo is found !")
-		log.Println(err)
+		err := errors.New("No matched Ioinfo is found")
+		logger.Error("%s", err)
 		return nil, err
 	}
 	return ioinfos, nil

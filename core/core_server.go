@@ -18,13 +18,12 @@ package core
 
 import (
 	"errors"
-	"log"
 	"strconv"
 	"sync"
 	"time"
-
 	"gerrit.opencord.org/voltha-bbsim/device"
 	"gerrit.opencord.org/voltha-bbsim/protos"
+	"gerrit.opencord.org/voltha-bbsim/common"
 	"gerrit.opencord.org/voltha-bbsim/setup"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -77,7 +76,7 @@ func Create(oltid uint32, npon uint32, nonus uint32, aaawait int, dhcpwait int, 
 	s := new(Server)
 	s.Olt = device.CreateOlt(oltid, npon, 1)
 	nnni := s.Olt.NumNniIntf
-	log.Printf("OLT ID: %d was retrieved.\n", s.Olt.ID)
+	logger.Info("OLT ID: %d was retrieved.\n", s.Olt.ID)
 	s.Onumap = make(map[uint32][]*device.Onu)
 	s.AAAWait = aaawait
 	s.DhcpWait = dhcpwait
@@ -115,23 +114,23 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 	}
 	olt.OperState = "up"
 	*olt.InternalState = device.OLT_UP
-	log.Printf("OLT %s sent OltInd.\n", olt.Name)
+	logger.Info("OLT %s sent OltInd.\n", olt.Name)
 
 	// OLT sends Interface Indication to Adapter
 	if err := sendIntfInd(stream, olt); err != nil {
-		log.Printf("[ERROR] Fail to sendIntfInd: %v\n", err)
+		logger.Error("Fail to sendIntfInd: %v\n", err)
 		return err
 	}
-	log.Printf("OLT %s sent IntfInd.\n", olt.Name)
+	logger.Info("OLT %s sent IntfInd.\n", olt.Name)
 
 	// OLT sends Operation Indication to Adapter after activating each interface
 	//time.Sleep(IF_UP_TIME * time.Second)
 	*olt.InternalState = device.PONIF_UP
 	if err := sendOperInd(stream, olt); err != nil {
-		log.Printf("[ERROR] Fail to sendOperInd: %v\n", err)
+		logger.Error("Fail to sendOperInd: %v\n", err)
 		return err
 	}
-	log.Printf("OLT %s sent OperInd.\n", olt.Name)
+	logger.Info("OLT %s sent OperInd.\n", olt.Name)
 
 	// OLT sends ONU Discover Indication to Adapter after ONU discovery
 	for intfid, _ := range s.Onumap {
@@ -140,7 +139,7 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 
 	for intfid, _ := range s.Onumap {
 		sendOnuDiscInd(stream, s.Onumap[intfid])
-		log.Printf("OLT id:%d sent ONUDiscInd.\n", olt.ID)
+		logger.Info("OLT id:%d sent ONUDiscInd.\n", olt.ID)
 	}
 
 	// OLT Sends OnuInd after waiting all of those ONUs up
@@ -152,19 +151,19 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 
 	for intfid, _ := range s.Onumap {
 		sendOnuInd(stream, s.Onumap[intfid], s.Delay)
-		log.Printf("OLT id:%d sent ONUInd.\n", olt.ID)
+		logger.Info("OLT id:%d sent ONUInd.\n", olt.ID)
 	}
 
 	if s.Mode == DEFAULT {
 		//EnableIndication's stream should be kept even after activateOLT() is finished.
 		//Otherwise, OpenOLT adapter sends EnableIndication again.
 		<-s.Endchan
-		log.Println("core server thread receives close !")
+		logger.Debug("core server thread receives close ")
 	} else if s.Mode == AAA || s.Mode == BOTH {
 		s.TestFlag = true
 		var err error
 		s.Ioinfos, s.VethEnv, err = createIoinfos(oltid, s.VethEnv, s.Onumap)
-		log.Println("s.VethEnv", s.VethEnv)
+		logger.Debug("s.VethEnv:%v", s.VethEnv)
 		if err != nil {
 			return err
 		}
@@ -178,7 +177,7 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 		wg.Add(1)
 		go func() {
 			defer func() {
-				log.Println("runPacketInDaemon Done")
+				logger.Debug("runPacketInDaemon Done")
 				wg.Done()
 			}()
 
@@ -192,7 +191,7 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 		wg.Add(1)
 		go func() {
 			defer func() {
-				log.Println("exeAAATest Done")
+				logger.Debug("exeAAATest Done")
 				wg.Done()
 			}()
 
@@ -205,7 +204,7 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 			if s.Mode == BOTH {
 				go func() {
 					defer func() {
-						log.Println("exeDHCPTest Done")
+						logger.Debug("exeDHCPTest Done")
 					}()
 
 					err := s.exeDHCPTest()
@@ -220,7 +219,7 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 		cleanUpVeths(s.VethEnv) // Grace teardown
 		pnames := s.Processes
 		killProcesses(pnames)
-		log.Println("Grace shutdown down")
+		logger.Debug("Grace shutdown down")
 	}
 	return nil
 }
@@ -257,7 +256,7 @@ func createIoinfos(oltid uint32, vethenv []string, onumap map[uint32][]*device.O
 }
 
 func (s *Server) runPacketInDaemon(stream openolt.Openolt_EnableIndicationServer) error {
-	log.Println("runPacketInDaemon Start")
+	logger.Debug("runPacketInDaemon Start")
 	unichannel := make(chan Packet, 2048)
 	flag := false
 
@@ -266,7 +265,7 @@ func (s *Server) runPacketInDaemon(stream openolt.Openolt_EnableIndicationServer
 			onuid := onu.OnuID
 			ioinfo, err := s.identifyUniIoinfo("inside", intfid, onuid)
 			if err != nil {
-				log.Printf("[ERROR] Fail to identifyUniIoinfo (onuid: %d): %v\n", onuid, err)
+				logger.Error("Fail to identifyUniIoinfo (onuid: %d): %v\n", onuid, err)
 				return err
 			}
 			uhandler := ioinfo.handler
@@ -288,9 +287,9 @@ func (s *Server) runPacketInDaemon(stream openolt.Openolt_EnableIndicationServer
 	for {
 		select {
 		case unipkt := <-unichannel:
-			log.Println("Received packet in grpc Server from UNI.")
+			logger.Debug("Received packet in grpc Server from UNI.")
 			if unipkt.Info == nil || unipkt.Info.iotype != "uni" {
-				log.Println("[WARNING] This packet does not come from UNI !")
+				logger.Info("WARNING: This packet does not come from UNI ")
 				continue
 			}
 
@@ -303,11 +302,11 @@ func (s *Server) runPacketInDaemon(stream openolt.Openolt_EnableIndicationServer
 			ethtype := le.EthernetType
 
 			if ethtype == 0x888e {
-				log.Printf("Received upstream packet is EAPOL.")
+				logger.Debug("Received upstream packet is EAPOL.")
 				//log.Println(unipkt.Pkt.Dump())
 				//log.Println(pkt.Dump())
 			} else if layerDHCP := pkt.Layer(layers.LayerTypeDHCPv4); layerDHCP != nil {
-				log.Printf("Received upstream packet is DHCP.")
+				logger.Debug("Received upstream packet is DHCP.")
 
 				//C-TAG
 				onu, _ := s.getOnuByID(onuid)
@@ -315,47 +314,47 @@ func (s *Server) runPacketInDaemon(stream openolt.Openolt_EnableIndicationServer
 				if ctag, ok := s.CtagMap[sn]; ok == true {
 					tagpkt, err := PushVLAN(pkt, uint16(ctag))
 					if err != nil {
-						log.Println("Error happend in C-tag tagging")
+						logger.Error("Fail to tag C-tag")
 					} else {
 						pkt = tagpkt
 					}
 				} else {
-					log.Printf("Could not find the onuid %d (SN: %s) in CtagMap %v!\n", onuid, sn, s.CtagMap)
+					logger.Error("Could not find the onuid %d (SN: %s) in CtagMap %v!\n", onuid, sn, s.CtagMap)
 				}
 			} else {
 				continue
 			}
 
-			log.Printf("sendPktInd intfid:%d (onuid: %d) gemid:%d\n", intfid, onuid, gemid)
+			logger.Debug("sendPktInd intfid:%d (onuid: %d) gemid:%d\n", intfid, onuid, gemid)
 			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "pon", IntfId: intfid, GemportId: gemid, Pkt: pkt.Data()}}
 			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-				log.Printf("[ERROR] Failed to send PktInd indication. %v\n", err)
+				logger.Error("Fail to send PktInd indication. %v\n", err)
 				return err
 			}
 
 		case nnipkt := <-nnichannel:
 			if nnipkt.Info == nil || nnipkt.Info.iotype != "nni" {
-				log.Println("[WARNING] This packet does not come from NNI !")
+				logger.Info("WARNING: This packet does not come from NNI ")
 				continue
 			}
 
-			log.Println("Received packet in grpc Server from NNI.")
+			logger.Debug("Received packet in grpc Server from NNI.")
 			intfid := nnipkt.Info.intfid
 			pkt := nnipkt.Pkt
-			log.Printf("sendPktInd intfid:%d\n", intfid)
+			logger.Info("sendPktInd intfid:%d\n", intfid)
 			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "nni", IntfId: intfid, Pkt: pkt.Data()}}
 			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-				log.Printf("[ERROR] Failed to send PktInd indication. %v\n", err)
+				logger.Error("Fail to send PktInd indication. %v\n", err)
 				return err
 			}
 
 		case <-s.Endchan:
 			if flag == false {
-				log.Println("PacketInDaemon thread receives close !")
+				logger.Debug("PacketInDaemon thread receives close ")
 				close(unichannel)
-				log.Println("Closed unichannel !")
+				logger.Debug("Closed unichannel ")
 				close(nnichannel)
-				log.Println("Closed nnichannel !")
+				logger.Debug("Closed nnichannel ")
 				flag = true
 				return nil
 			}
@@ -365,7 +364,7 @@ func (s *Server) runPacketInDaemon(stream openolt.Openolt_EnableIndicationServer
 }
 
 func (s *Server) exeAAATest() error {
-	log.Println("exeAAATest starts to sleep....")
+	logger.Info("exeAAATest stands by....")
 	infos, err := s.getUniIoinfos("outside")
 	if err != nil {
 		return err
@@ -379,16 +378,16 @@ func (s *Server) exeAAATest() error {
 	for {
 		select {
 		case <-s.Endchan:
-			log.Println("exeAAATest thread receives close !")
+			logger.Debug("exeAAATest thread receives close ")
 			return nil
 		case <-time.After(time.Second * time.Duration(s.AAAWait)):
-			log.Println("exeAAATest Start")
 			err = setup.ActivateWPASups(univeths, s.Delay)
 			if err != nil {
 				return err
 			}
+			logger.Info("WPA Supplicants are successfully activated ")
 			s.Processes = append(s.Processes, "wpa_supplicant")
-			log.Println("s.Processes:", s.Processes)
+			logger.Debug("Running Process:%v", s.Processes)
 			return nil
 		}
 	}
@@ -396,7 +395,7 @@ func (s *Server) exeAAATest() error {
 }
 
 func (s *Server) exeDHCPTest() error {
-	log.Println("exeDHCPTest starts to sleep....")
+	logger.Info("exeDHCPTest stands by....")
 	info, err := s.identifyNniIoinfo("outside")
 
 	if err != nil {
@@ -408,6 +407,7 @@ func (s *Server) exeDHCPTest() error {
 		return err
 	}
 	s.Processes = append(s.Processes, "dhcpd")
+	logger.Debug("Running Process:%v", s.Processes)
 
 	infos, err := s.getUniIoinfos("outside")
 	if err != nil {
@@ -422,16 +422,16 @@ func (s *Server) exeDHCPTest() error {
 	for {
 		select {
 		case <-s.Endchan:
-			log.Println("exeDHCPTest thread receives close !")
+			logger.Debug("exeDHCPTest thread receives close ")
 			return nil
 		case <-time.After(time.Second * time.Duration(s.DhcpWait)):
-			log.Println("exeDHCPTest Start")
 			err = setup.ActivateDHCPClients(univeths, s.Delay)
 			if err != nil {
 				return err
 			}
+			logger.Info("DHCP clients are successfully activated ")
 			s.Processes = append(s.Processes, "dhclient")
-			log.Println("s.Processes:", s.Processes)
+			logger.Debug("Running Process:%v", s.Processes)
 			return nil
 		}
 	}
@@ -444,10 +444,10 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 		pkt, _ := layerEth.(*layers.Ethernet)
 		ethtype := pkt.EthernetType
 		if ethtype == 0x888e {
-			log.Printf("Received downstream packet is EAPOL.")
+			logger.Debug("Received downstream packet is EAPOL.")
 			//log.Println(rawpkt.Dump())
 		} else if layerDHCP := rawpkt.Layer(layers.LayerTypeDHCPv4); layerDHCP != nil {
-			log.Printf("Received downstream packet is DHCP.")
+			logger.Debug("Received downstream packet is DHCP.")
 			//log.Println(rawpkt.Dump())
 			rawpkt, _, _ = PopVLAN(rawpkt)
 			rawpkt, _, _ = PopVLAN(rawpkt)
@@ -462,7 +462,7 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 		SendUni(handle, rawpkt)
 		return nil
 	}
-	log.Printf("[WARNING] Received packet is not supported")
+	logger.Info("WARNING: Received packet is not supported")
 	return nil
 }
 
@@ -470,7 +470,7 @@ func (s *Server) uplinkPacketOut(rawpkt gopacket.Packet) error {
 	poppkt, _, err := PopVLAN(rawpkt)
 	poppkt, _, err = PopVLAN(poppkt)
 	if err != nil {
-		log.Println(err)
+		logger.Error("%s", err)
 		return err
 	}
 	ioinfo, err := s.identifyNniIoinfo("inside")
@@ -507,8 +507,8 @@ func (s *Server) getOnuBySN(sn *openolt.SerialNumber) (*device.Onu, error) {
 			}
 		}
 	}
-	err := errors.New("No mathced SN is found !")
-	log.Println(err)
+	err := errors.New("No mathced SN is found ")
+	logger.Error("%s", err)
 	return nil, err
 }
 
@@ -520,8 +520,8 @@ func (s *Server) getOnuByID(onuid uint32) (*device.Onu, error) {
 			}
 		}
 	}
-	err := errors.New("No matched OnuID is found !")
-	log.Println(err)
+	err := errors.New("No matched OnuID is found ")
+	logger.Error("%s", err)
 	return nil, err
 }
 
@@ -539,7 +539,7 @@ func makeNniName(oltid uint32) (upif string, dwif string) {
 
 func cleanUpVeths(vethenv []string) error {
 	if len(vethenv) > 0 {
-		log.Println("cleanUp veths !")
+		logger.Debug("cleanUpVeths called ")
 		setup.TearVethDown(vethenv)
 	}
 	return nil
@@ -553,7 +553,7 @@ func killProcesses(pnames []string) error {
 }
 
 func setupVethHandler(inveth string, outveth string, vethenv []string) (*pcap.Handle, []string, error) {
-	log.Printf("setupVethHandler: %s and %s\n", inveth, outveth)
+	logger.Debug("SetupVethHandler(%s, %s) called ", inveth, outveth)
 	err1 := setup.CreateVethPairs(inveth, outveth)
 	vethenv = append(vethenv, inveth)
 	if err1 != nil {
@@ -580,7 +580,7 @@ func getVethHandler(vethname string) (*pcap.Handle, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("Server handle created for %s\n", vethname)
+	logger.Debug("Server handle is created for %s\n", vethname)
 	return handle, nil
 }
 

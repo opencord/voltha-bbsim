@@ -19,6 +19,7 @@ package core
 import (
 	"gerrit.opencord.org/voltha-bbsim/device"
 	"gerrit.opencord.org/voltha-bbsim/protos"
+	"gerrit.opencord.org/voltha-bbsim/common"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"golang.org/x/net/context"
@@ -30,28 +31,28 @@ import (
 
 // gRPC Service
 func (s *Server) DisableOlt(c context.Context, empty *openolt.Empty) (*openolt.Empty, error) {
-	log.Printf("OLT receives DisableOLT()\n")
+	logger.Info("OLT receives DisableOLT()\n")
 	if s.EnableServer != nil {
 		if err := sendOltIndDown(*s.EnableServer); err != nil {
 			return new(openolt.Empty), err
 		}
-		log.Println("Successfuly sent OLT DOWN indication !")
+		logger.Info("Successfuly sent OLT DOWN indication")
 	}
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) ReenableOlt(c context.Context, empty *openolt.Empty) (*openolt.Empty, error) {
-	log.Printf("OLT receives Reenable()\n")
+	logger.Info("OLT receives Reenable()\n")
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) CollectStatistics(c context.Context, empty *openolt.Empty) (*openolt.Empty, error) {
-	log.Printf("OLT receives CollectStatistics()\n")
+	logger.Info("OLT receives CollectStatistics()\n")
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) GetDeviceInfo(c context.Context, empty *openolt.Empty) (*openolt.DeviceInfo, error) {
-	log.Printf("OLT receives GetDeviceInfo()\n")
+	logger.Info("OLT receives GetDeviceInfo()\n")
 	devinfo := new(openolt.DeviceInfo)
 	devinfo.Vendor = "CORD"
 	devinfo.OnuIdStart = 0
@@ -61,7 +62,7 @@ func (s *Server) GetDeviceInfo(c context.Context, empty *openolt.Empty) (*openol
 }
 
 func (s *Server) ActivateOnu(c context.Context, onu *openolt.Onu) (*openolt.Empty, error) {
-	log.Printf("OLT receives ActivateONU()\n")
+	logger.Info("OLT receives ActivateONU()\n")
 	result := device.ValidateONU(*onu, s.Onumap)
 	if result == true {
 		matched, error := s.getOnuBySN(onu.SerialNumber)
@@ -71,29 +72,29 @@ func (s *Server) ActivateOnu(c context.Context, onu *openolt.Onu) (*openolt.Empt
 		onuid := onu.OnuId
 		matched.OnuID = onuid
 		matched.UpdateIntStatus(device.ONU_ACTIVATED)
-		log.Printf("ONU IntfID: %d OnuID: %d activated succesufully.\n", onu.IntfId, onu.OnuId)
+		logger.Info("ONU IntfID: %d OnuID: %d activated succesufully.\n", onu.IntfId, onu.OnuId)
 	}
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) DeactivateOnu(c context.Context, onu *openolt.Onu) (*openolt.Empty, error) {
-	log.Printf("OLT receives DeactivateONU()\n")
+	logger.Info("OLT receives DeactivateONU()\n")
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) DeleteOnu(c context.Context, onu *openolt.Onu) (*openolt.Empty, error) {
-	log.Printf("OLT receives DeleteONU()\n")
+	logger.Info("OLT receives DeleteONU()\n")
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) OmciMsgOut(c context.Context, msg *openolt.OmciMsg) (*openolt.Empty, error) {
-	log.Printf("OLT %d receives OmciMsgOut to IF %v (ONU-ID: %v) pkt:%x.\n", s.Olt.ID, msg.IntfId, msg.OnuId, msg.Pkt)
+	logger.Info("OLT %d receives OmciMsgOut to IF %v (ONU-ID: %v) pkt:%x.\n", s.Olt.ID, msg.IntfId, msg.OnuId, msg.Pkt)
 	//s.olt.Queue = append(s.olt.Queue, *msg)
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) OnuPacketOut(c context.Context, packet *openolt.OnuPacket) (*openolt.Empty, error) {
-	log.Printf("OLT %d receives OnuPacketOut () to IF-ID:%d ONU-ID %d.\n", s.Olt.ID, packet.IntfId, packet.OnuId)
+	logger.Info("OLT %d receives OnuPacketOut () to IF-ID:%d ONU-ID %d.\n", s.Olt.ID, packet.IntfId, packet.OnuId)
 	onuid := packet.OnuId
 	intfid := packet.IntfId
 	rawpkt := gopacket.NewPacket(packet.Pkt, layers.LayerTypeEthernet, gopacket.Default)
@@ -104,7 +105,7 @@ func (s *Server) OnuPacketOut(c context.Context, packet *openolt.OnuPacket) (*op
 }
 
 func (s *Server) UplinkPacketOut(c context.Context, packet *openolt.UplinkPacket) (*openolt.Empty, error) {
-	log.Printf("OLT %d receives UplinkPacketOut().\n", s.Olt.ID)
+	logger.Info("OLT %d receives UplinkPacketOut().\n", s.Olt.ID)
 	rawpkt := gopacket.NewPacket(packet.Pkt, layers.LayerTypeEthernet, gopacket.Default)
 	if err := s.uplinkPacketOut(rawpkt); err != nil {
 		return new(openolt.Empty), err
@@ -113,8 +114,8 @@ func (s *Server) UplinkPacketOut(c context.Context, packet *openolt.UplinkPacket
 }
 
 func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty, error) {
-	log.Printf("OLT %d receives FlowAdd().\n", s.Olt.ID)
-	log.Printf("Flow's ONU-ID: %d, CTAG: %d\n", flow.OnuId, flow.Action.IVid)
+	logger.Info("OLT %d receives FlowAdd().\n", s.Olt.ID)
+	logger.Debug("Flow's ONU-ID: %d, CTAG: %d\n", flow.OnuId, flow.Action.IVid)
 	//onuid := uint32(flow.OnuId)
 	//ctag := flow.Action.IVid
 	//s.CtagMap[onuid] = ctag
@@ -122,39 +123,39 @@ func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty,
 }
 
 func (s *Server) FlowRemove(c context.Context, flow *openolt.Flow) (*openolt.Empty, error) {
-	log.Printf("OLT %d receives FlowRemove().\n", s.Olt.ID)
+	logger.Info("OLT %d receives FlowRemove().\n", s.Olt.ID)
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) HeartbeatCheck(c context.Context, empty *openolt.Empty) (*openolt.Heartbeat, error) {
-	log.Printf("OLT %d receives HeartbeatCheck().\n", s.Olt.ID)
+	logger.Info("OLT %d receives HeartbeatCheck().\n", s.Olt.ID)
 	signature := new(openolt.Heartbeat)
 	signature.HeartbeatSignature = s.Olt.HeartbeatSignature
 	return signature, nil
 }
 
 func (s *Server) EnablePonIf(c context.Context, intf *openolt.Interface) (*openolt.Empty, error) {
-	log.Printf("OLT %d receives EnablePonIf().\n", s.Olt.ID)
+	logger.Info("OLT %d receives EnablePonIf().\n", s.Olt.ID)
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) DisablePonIf(c context.Context, intf *openolt.Interface) (*openolt.Empty, error) {
-	log.Printf("OLT %d receives DisablePonIf().\n", s.Olt.ID)
+	logger.Info("OLT %d receives DisablePonIf().\n", s.Olt.ID)
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) Reboot(c context.Context, empty *openolt.Empty) (*openolt.Empty, error) {
-	log.Printf("OLT %d receives Reboot ().\n", s.Olt.ID)
+	logger.Info("OLT %d receives Reboot ().\n", s.Olt.ID)
 	// Initialize OLT & Env
 	if s.TestFlag == true{
-		log.Println("Initialized by Reboot")
+		logger.Debug("Initialized by Reboot")
 		cleanUpVeths(s.VethEnv)
 		close(s.Endchan)
 		processes := s.Processes
-		log.Println("processes:", processes)
+		logger.Debug("Runnig Processes:", processes)
 		killProcesses(processes)
-		exec.Command("rm", "/var/run/dhcpd.pid").Run()
-		exec.Command("touch", "/var/run/dhcpd.pid").Run()
+		exec.Command("rm", "/var/run/dhcpd.pid").Run()	//This is for DHCP server activation
+		exec.Command("touch", "/var/run/dhcpd.pid").Run()	//This is for DHCP server activation
 		s.Initialize()
 	}
 	olt := s.Olt
@@ -172,17 +173,17 @@ func (s *Server) EnableIndication(empty *openolt.Empty, stream openolt.Openolt_E
 		s.gRPCserver.Stop()
 	}()
 	s.EnableServer = &stream
-	log.Printf("OLT receives EnableInd.\n")
+	logger.Info("OLT receives EnableInd.\n")
 	if err := s.activateOLT(stream); err != nil {
-		log.Printf("Failed to activate OLT: %v\n", err)
+		logger.Error("Failed to activate OLT: %v\n", err)
 		return err
 	}
-	log.Println("Core server down.")
+	logger.Debug("Core server down.")
 	return nil
 }
 
 func CreateGrpcServer(oltid uint32, npon uint32, nonus uint32, addrport string) (l net.Listener, g *grpc.Server, e error) {
-	log.Printf("Listening %s ...", addrport)
+	logger.Info("Listening %s ...", addrport)
 	g = grpc.NewServer()
 	l, e = net.Listen("tcp", addrport)
 	return

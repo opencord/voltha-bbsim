@@ -17,10 +17,10 @@
 package device
 
 import (
- 	"gerrit.opencord.org/voltha-bbsim/protos"
-	"log"
 	"reflect"
 	"sync"
+	"gerrit.opencord.org/voltha-bbsim/protos"
+	"gerrit.opencord.org/voltha-bbsim/common"
 )
 
 type onuState int
@@ -84,7 +84,7 @@ func ValidateSN(sn1 openolt.SerialNumber, sn2 openolt.SerialNumber) bool {
 func UpdateOnusOpStatus(ponif uint32, onus []*Onu, opstatus string) {
 	for i, onu := range onus {
 		onu.OperState = "up"
-		log.Printf("(PONIF:%d) ONU [%d] discovered.\n", ponif, i)
+		logger.Info("(PONIF:%d) ONU [%d] discovered.\n", ponif, i)
 	}
 }
 

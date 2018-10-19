@@ -17,9 +17,10 @@
 package setup
 
 import (
-	"log"
 	"os/exec"
 	"time"
+	"log"
+	"gerrit.opencord.org/voltha-bbsim/common"
 )
 
 const (
@@ -32,7 +33,7 @@ const (
 func ActivateWPASups(vethnames []string, delay int) error {
 	for _, vethname := range vethnames {
 		time.Sleep(time.Duration(delay) * time.Second)
-		log.Printf("ActivateWPASups for interface %v\n", vethname)
+		logger.Debug("ActivateWPASups for interface %v\n", vethname)
 		if err := activateWPASupplicant(vethname); err != nil {
 			return err
 		}
@@ -43,7 +44,7 @@ func ActivateWPASups(vethnames []string, delay int) error {
 func ActivateDHCPClients(vethnames []string, delay int) error {
 	for _, vethname := range vethnames {
 		time.Sleep(time.Duration(delay) * time.Second)
-		log.Printf("activateDHCPClient for interface %v\n", vethname)
+		logger.Debug("activateDHCPClient for interface %v\n", vethname)
 		if err := activateDHCPClient(vethname); err != nil {
 			return err
 		}
@@ -54,10 +55,10 @@ func ActivateDHCPClients(vethnames []string, delay int) error {
 func KillProcess(name string) error {
 	err := exec.Command("pkill", name).Run()
 	if err != nil {
-		log.Printf("[ERROR] Fail to pkill %s: %v\n", name, err)
+		logger.Error("Fail to pkill %s: %v\n", name, err)
 		return err
 	}
-	log.Printf("Successfully killed %s\n", name)
+	logger.Info("Successfully killed %s\n", name)
 	return nil
 }
 
@@ -70,34 +71,34 @@ func TearVethDown(veths []string) {
 func CreateVethPairs(name1 string, name2 string) (err error) {
 	err = exec.Command("ip", "link", "add", name1, "type", "veth", "peer", "name", name2).Run()
 	if err != nil {
-		log.Printf("[ERROR] Fail to createVeth() for %s and %s veth creation error: %s\n", name1, name2, err.Error())
+		logger.Error("Fail to createVeth() for %s and %s veth creation error: %s\n", name1, name2, err.Error())
 		return
 	}
-	log.Printf("%s & %s was created.", name1, name2)
+	logger.Info("%s & %s was created.", name1, name2)
 	err = exec.Command("ip", "link", "set", name1, "up").Run()
 	if err != nil {
-		log.Println("[ERROR] Fail to createVeth() veth1 up", err)
+		logger.Error("Fail to createVeth() veth1 up", err)
 		return
 	}
 	err = exec.Command("ip", "link", "set", name2, "up").Run()
 	if err != nil {
-		log.Println("[ERROR] Fail to createVeth() veth2 up", err)
+		logger.Error("Fail to createVeth() veth2 up", err)
 		return
 	}
-	log.Printf("%s & %s was up.", name1, name2)
+	logger.Info("%s & %s was up.", name1, name2)
 	return
 }
 
 func RemoveVeth(name string) {
 	err := exec.Command("ip", "link", "del", name).Run()
 	if err != nil {
-		log.Println("[ERROR] Fail to removeVeth()", err)
+		logger.Error("Fail to removeVeth()", err)
 	}
-	log.Printf("%s was removed.", name)
+	logger.Info("%s was removed.", name)
 }
 
 func RemoveVeths(names []string) {
-	log.Printf("RemoveVeths() :%s\n", names)
+	logger.Info("RemoveVeths() :%s\n", names)
 	for _, name := range names {
 		RemoveVeth(name)
 	}
@@ -108,19 +109,19 @@ func activateWPASupplicant(vethname string) (err error) {
 	conf := "/etc/wpa_supplicant/wpa_supplicant.conf"
 	err = exec.Command(cmd, "-D", "wired", "-i", vethname, "-c", conf).Start()
 	if err != nil {
-		log.Printf("[ERROR] Fail to activateWPASupplicant() for: %s %v\n", vethname, err)
+		logger.Error("Fail to activateWPASupplicant() for :%s %v\n", vethname, err)
 		return
 	}
-	log.Printf("activateWPASupplicant() for: %s\n", vethname)
+	logger.Info("activateWPASupplicant() for :%s\n", vethname)
 	return
 }
 
 func activateDHCPClient(vethname string) (err error) {
-	log.Printf("activateDHCPClient() start for: %s\n", vethname)
+	logger.Debug("activateDHCPClient() start for: %s\n", vethname)
 	cmd := exec.Command("/usr/local/bin/dhclient", vethname)
 	// if err := cmd.Run(); err != nil {
 	if err := cmd.Start(); err != nil {
-		log.Printf("[ERROR] Failed to activateDHCPClient() for: %s", vethname)
+		logger.Error("Fail to activateDHCPClient() for: %s", vethname)
 		log.Panic(err)
 	}
 
@@ -130,28 +131,28 @@ func activateDHCPClient(vethname string) (err error) {
 	// 	log.Printf("[ERROR] Failed to kill activateDHCPClient() for: %s", vethname, err)
 	// }
 
-	log.Printf("activateDHCPClient() done for: %s\n", vethname)
+	logger.Debug("activateDHCPClient() done for: %s\n", vethname)
 	return
 }
 
 func ActivateDHCPServer(veth string, serverip string) error {
 	err := exec.Command("ip", "addr", "add", serverip, "dev", veth).Run()
 	if err != nil {
-		log.Printf("[ERROR] Fail to add ip to %s address: %s\n", veth, err)
+		logger.Error("Fail to add ip to %s address: %s\n", veth, err)
 		return err
 	}
 	err = exec.Command("ip", "link", "set", veth, "up").Run()
 	if err != nil {
-		log.Printf("[ERROR] Fail to set %s up: %s\n", veth, err)
+		logger.Error("Fail to set %s up: %s\n", veth, err)
 		return err
 	}
 	cmd := "/usr/local/bin/dhcpd"
 	conf := "/etc/dhcp/dhcpd.conf"
 	err = exec.Command(cmd, "-cf", conf, veth).Run()
 	if err != nil {
-		log.Printf("[ERROR] Fail to activateDHCP Server (): %s\n", err)
+		logger.Error("Fail to activateDHCP Server (): %s\n", err)
 		return err
 	}
-	log.Printf("Activate DHCP Server()\n")
+	logger.Info("DHCP Server is successfully activated !\n")
 	return err
 }
