@@ -17,10 +17,10 @@
 package device
 
 import (
+ 	"gerrit.opencord.org/voltha-bbsim/protos"
 	"log"
 	"reflect"
-
-	"gerrit.opencord.org/voltha-bbsim/protos"
+	"sync"
 )
 
 type onuState int
@@ -36,9 +36,10 @@ type Onu struct {
 	OperState     string
 	SerialNumber  *openolt.SerialNumber
 	OnuID         uint32
+	mu            *sync.Mutex
 }
 
-func createSN(oltid uint32, intfid uint32, onuid uint32) []byte {
+func CreateSN(oltid uint32, intfid uint32, onuid uint32) []byte {
 	sn := []byte{0, byte(oltid % 256), byte(intfid), byte(onuid)}
 	return sn
 }
@@ -49,11 +50,12 @@ func CreateOnus(oltid uint32, intfid uint32, nonus uint32, nnni uint32) []*Onu {
 		onu := Onu{}
 		onu.InternalState = new(onuState)
 		*onu.InternalState = ONU_PRE_ACTIVATED
+		onu.mu = &sync.Mutex{}
 		onu.IntfID = intfid
 		onu.OperState = "up"
 		onu.SerialNumber = new(openolt.SerialNumber)
 		onu.SerialNumber.VendorId = []byte("BBSM")
-		onu.SerialNumber.VendorSpecific = createSN(oltid, intfid, uint32(i))
+		onu.SerialNumber.VendorSpecific = CreateSN(oltid, intfid, uint32(i))
 		onus = append(onus, &onu)
 	}
 	return onus
@@ -84,4 +86,16 @@ func UpdateOnusOpStatus(ponif uint32, onus []*Onu, opstatus string) {
 		onu.OperState = "up"
 		log.Printf("(PONIF:%d) ONU [%d] discovered.\n", ponif, i)
 	}
+}
+
+func (onu *Onu) UpdateIntStatus(intstatus onuState){
+	onu.mu.Lock()
+	defer onu.mu.Unlock()
+	*onu.InternalState = intstatus
+}
+
+func (onu *Onu) GetIntStatus() onuState{
+	onu.mu.Lock()
+	defer onu.mu.Unlock()
+	return *onu.InternalState
 }

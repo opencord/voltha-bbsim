@@ -17,8 +17,8 @@
 package core
 
 import (
-	"errors"
 	"github.com/google/gopacket/pcap"
+	"errors"
 	"log"
 )
 

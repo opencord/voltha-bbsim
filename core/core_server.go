@@ -17,7 +17,6 @@
 package core
 
 import (
-	"errors"
 	"gerrit.opencord.org/voltha-bbsim/device"
 	"gerrit.opencord.org/voltha-bbsim/protos"
 	"gerrit.opencord.org/voltha-bbsim/setup"
@@ -25,6 +24,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"google.golang.org/grpc"
+	"errors"
 	"log"
 	"strconv"
 	"sync"
@@ -55,6 +55,7 @@ type Server struct {
 	TestFlag     bool
 	Processes    []string
 	EnableServer *openolt.Openolt_EnableIndicationServer
+	CtagMap      map[string]uint32
 }
 
 type Packet struct {
@@ -88,6 +89,15 @@ func Create(oltid uint32, npon uint32, nonus uint32, aaawait int, dhcpwait int, 
 		s.Onumap[intfid] = device.CreateOnus(oltid, intfid, nonus, nnni)
 	}
 	s.EnableServer = new(openolt.Openolt_EnableIndicationServer)
+
+	//TODO: To be fixed
+	s.CtagMap = make(map[string]uint32)
+	for i := 0; i < MAX_ONUS_PER_PON; i ++ {
+		oltid := s.Olt.ID
+		intfid := uint32(1)
+		sn := convB2S(device.CreateSN(oltid, intfid, uint32(i)))
+		s.CtagMap[sn] = uint32(900 + i)	// This is hard coded for BBWF
+	}
 	return s
 }
 
@@ -132,7 +142,7 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 
 	// OLT Sends OnuInd after waiting all of those ONUs up
 	for {
-		if s.IsAllONUActive() {
+		if s.IsAllOnuActive(s.Onumap) {
 			break
 		}
 	}
@@ -235,7 +245,7 @@ func createIoinfos(oltid uint32, vethenv []string, onumap map[uint32][]*device.O
 	if handler, vethenv, err = setupVethHandler(nniup, nnidw, vethenv); err != nil {
 		return ioinfos, vethenv, err
 	}
-	//TODO: Intfid should be modified
+
 	iinfo := Ioinfo{name: nnidw, iotype: "nni", ioloc: "inside", intfid: 1, handler: handler}
 	ioinfos = append(ioinfos, &iinfo)
 	oinfo := Ioinfo{name: nniup, iotype: "nni", ioloc: "outside", intfid: 1, handler: nil}
@@ -288,14 +298,27 @@ func (s *Server) runPacketInDaemon(stream openolt.Openolt_EnableIndicationServer
 			layerEth := pkt.Layer(layers.LayerTypeEthernet)
 			le, _ := layerEth.(*layers.Ethernet)
 			ethtype := le.EthernetType
+
 			if ethtype == 0x888e {
 				log.Printf("Received upstream packet is EAPOL.")
 				//log.Println(unipkt.Pkt.Dump())
 				//log.Println(pkt.Dump())
 			} else if layerDHCP := pkt.Layer(layers.LayerTypeDHCPv4); layerDHCP != nil {
 				log.Printf("Received upstream packet is DHCP.")
-				//log.Println(unipkt.Pkt.Dump())
-				//log.Println(pkt.Dump())
+
+				//C-TAG
+				onu, _ := s.getOnuByID(onuid)
+				sn := convB2S(onu.SerialNumber.VendorSpecific)
+				if ctag, ok := s.CtagMap[sn]; ok == true{
+					tagpkt, err := PushVLAN(pkt, uint16(ctag))
+					if err != nil {
+						log.Println("Error happend in C-tag tagging")
+					} else {
+						pkt = tagpkt
+					}
+				} else {
+					log.Printf("Could not find the onuid %d (SN: %s) in CtagMap %v!\n", onuid, sn, s.CtagMap)
+				}
 			} else {
 				continue
 			}
@@ -441,7 +464,6 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 }
 
 func (s *Server) uplinkPacketOut(rawpkt gopacket.Packet) error {
-	log.Println("")
 	poppkt, _, err := PopVLAN(rawpkt)
 	poppkt, _, err = PopVLAN(poppkt)
 	if err != nil {
@@ -457,10 +479,10 @@ func (s *Server) uplinkPacketOut(rawpkt gopacket.Packet) error {
 	return nil
 }
 
-func (s *Server) IsAllONUActive() bool {
-	for _, onus := range s.Onumap {
+func (s *Server)IsAllOnuActive(regonus map[uint32][]*device.Onu) bool {
+	for _, onus := range regonus {
 		for _, onu := range onus {
-			if *onu.InternalState != device.ONU_ACTIVATED {
+			if onu.GetIntStatus() != device.ONU_ACTIVATED {
 				return false
 			}
 		}
@@ -557,4 +579,12 @@ func getVethHandler(vethname string) (*pcap.Handle, error) {
 	}
 	log.Printf("Server handle created for %s\n", vethname)
 	return handle, nil
+}
+
+func convB2S(b []byte) string {
+	s := ""
+	for _, i := range b {
+		s = s + strconv. FormatInt(int64(i/16), 16) + strconv. FormatInt(int64(i%16), 16)
+	}
+	return s
 }

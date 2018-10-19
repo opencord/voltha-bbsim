@@ -17,10 +17,10 @@
 package core
 
 import (
-	"errors"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"errors"
 	"log"
 	"net"
 )
@@ -39,13 +39,19 @@ func RecvWorker(io *Ioinfo, handler *pcap.Handle, r chan Packet) {
 }
 
 func SendUni(handle *pcap.Handle, packet gopacket.Packet) {
-	handle.WritePacketData(packet.Data())
-	log.Printf("send packet to UNI-IF: %v \n", *handle)
+	err := handle.WritePacketData(packet.Data())
+	if err != nil {
+		log.Printf("Error in send packet to UNI-IF: %v e:%s\n", *handle, err)
+	}
+	log.Printf("Successfully send packet to UNI-IF: %v \n", *handle)
 	//log.Println(packet.Dump())
 }
 
 func SendNni(handle *pcap.Handle, packet gopacket.Packet) {
-	handle.WritePacketData(packet.Data())
+	err := handle.WritePacketData(packet.Data())
+	if err != nil{
+		log.Printf("Error in send packet to NNI e:%s\n", err)
+	}
 	log.Printf("send packet to NNI-IF: %v \n", *handle)
 	//log.Println(packet.Dump())
 }

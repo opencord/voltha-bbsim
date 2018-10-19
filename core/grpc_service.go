@@ -31,10 +31,12 @@ import (
 // gRPC Service
 func (s *Server) DisableOlt(c context.Context, empty *openolt.Empty) (*openolt.Empty, error) {
 	log.Printf("OLT receives DisableOLT()\n")
-	if err := sendOltIndDown(*s.EnableServer); err != nil {
-		return new(openolt.Empty), err
+	if s.EnableServer != nil {
+		if err := sendOltIndDown(*s.EnableServer); err != nil {
+			return new(openolt.Empty), err
+		}
+		log.Println("Successfuly sent OLT DOWN indication !")
 	}
-	log.Println("Successfuly sent OLT DOWN indication !")
 	return new(openolt.Empty), nil
 }
 
@@ -68,7 +70,7 @@ func (s *Server) ActivateOnu(c context.Context, onu *openolt.Onu) (*openolt.Empt
 		}
 		onuid := onu.OnuId
 		matched.OnuID = onuid
-		*matched.InternalState = device.ONU_ACTIVATED
+		matched.UpdateIntStatus(device.ONU_ACTIVATED)
 		log.Printf("ONU IntfID: %d OnuID: %d activated succesufully.\n", onu.IntfId, onu.OnuId)
 	}
 	return new(openolt.Empty), nil
@@ -112,6 +114,10 @@ func (s *Server) UplinkPacketOut(c context.Context, packet *openolt.UplinkPacket
 
 func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty, error) {
 	log.Printf("OLT %d receives FlowAdd().\n", s.Olt.ID)
+	log.Printf("Flow's ONU-ID: %d, CTAG: %d\n", flow.OnuId, flow.Action.IVid)
+	//onuid := uint32(flow.OnuId)
+	//ctag := flow.Action.IVid
+	//s.CtagMap[onuid] = ctag
 	return new(openolt.Empty), nil
 }
 
