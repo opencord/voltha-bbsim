@@ -17,19 +17,11 @@
 package main
 
 import (
-	"flag"
-	"fmt"
-	"log"
-	"os"
-	"os/signal"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
-	"gerrit.opencord.org/voltha-bbsim/common"
 	"gerrit.opencord.org/voltha-bbsim/core"
-	"gerrit.opencord.org/voltha-bbsim/protos"
+	"log"
 )
+
+
 
 func printBanner() {
 	log.Println("     ________    _______   ________                 ")
@@ -40,64 +32,11 @@ func printBanner() {
 	log.Println("/________/ /________/ /________/ /_/ /_/ /_/ /_/  ")
 }
 
-func getOptions() (uint32, string, uint32, uint32, uint32, int, int, string, int, core.Mode) {
-	addressport := flag.String("H", ":50060", "IP address:port")
-	oltid := flag.Int("id", 0, "OLT-ID")
-	nintfs := flag.Int("i", 1, "Number of PON-IF ports")
-	nonus := flag.Int("n", 1, "Number of ONUs per PON-IF port")
-	modeopt := flag.String("m", "default", "Emulation mode (default, aaa, both (aaa & dhcp))")
-	aaawait := flag.Int("a", 30, "Wait time (sec) for activation WPA supplicants")
-	dhcpwait := flag.Int("d", 10, "Wait time (sec) for activation DHCP clients")
-	dhcpservip := flag.String("s", "182.21.0.1", "DHCP Server IP Address")
-	delay := flag.Int("delay", 1, "Delay between ONU events")
-	mode := core.DEFAULT
-	flag.Parse()
-	if *modeopt == "aaa" {
-		mode = core.AAA
-	} else if *modeopt == "both" {
-		mode = core.BOTH
-	}
-	address := strings.Split(*addressport, ":")[0]
-	tmp, _ := strconv.Atoi(strings.Split(*addressport, ":")[1])
-	port := uint32(tmp)
-	return uint32(*oltid), address, port, uint32(*nintfs), uint32(*nonus), *aaawait, *dhcpwait, *dhcpservip, *delay, mode
-}
-
 func main() {
 	// CLI Shows up
 	printBanner()
-	oltid, ip, port, npon, nonus, aaawait, dhcpwait, dhcpservip, delay, mode := getOptions()
-	logger.Debug("ip:%s, baseport:%d, npon:%d, nonus:%d, mode:%d\n", ip, port, npon, nonus, mode)
+	opt := core.GetOptions()
 
-	// Set up gRPC Server
-	var wg sync.WaitGroup
-
-	addressport := ip + ":" + strconv.Itoa(int(port))
-	endchan := make(chan int, 1)
-	listener, gserver, err := core.CreateGrpcServer(oltid, npon, nonus, addressport)
-	server := core.Create(oltid, npon, nonus, aaawait, dhcpwait, dhcpservip, delay, gserver, mode, endchan)
-	if err != nil {
-		logger.Error("Failed to create gRPC server", err)
-	}
-	openolt.RegisterOpenoltServer(gserver, server)
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		gserver.Serve(listener)
-	}()
-
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	go func() {
-		for sig := range c {
-			fmt.Println("SIGINT", sig)
-			close(c)
-			close(server.Endchan)
-			gserver.Stop()
-		}
-	}()
-	wg.Wait()
-	time.Sleep(5 * time.Second)
-	logger.Debug("Reach to the end line")
+	mediator := core.NewMediator(opt)
+	mediator.Start()
 }

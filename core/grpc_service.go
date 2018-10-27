@@ -17,16 +17,15 @@
 package core
 
 import (
+	"gerrit.opencord.org/voltha-bbsim/common"
 	"gerrit.opencord.org/voltha-bbsim/device"
 	"gerrit.opencord.org/voltha-bbsim/protos"
-	"gerrit.opencord.org/voltha-bbsim/common"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"log"
 	"net"
-	"os/exec"
 )
 
 // gRPC Service
@@ -65,7 +64,7 @@ func (s *Server) ActivateOnu(c context.Context, onu *openolt.Onu) (*openolt.Empt
 	logger.Info("OLT receives ActivateONU()\n")
 	result := device.ValidateONU(*onu, s.Onumap)
 	if result == true {
-		matched, error := s.getOnuBySN(onu.SerialNumber)
+		matched, error := getOnuBySN(s.Onumap, onu.SerialNumber)
 		if error != nil {
 			log.Fatalf("%s\n", error)
 		}
@@ -147,42 +146,24 @@ func (s *Server) DisablePonIf(c context.Context, intf *openolt.Interface) (*open
 func (s *Server) Reboot(c context.Context, empty *openolt.Empty) (*openolt.Empty, error) {
 	logger.Info("OLT %d receives Reboot ().\n", s.Olt.ID)
 	// Initialize OLT & Env
-	if s.TestFlag == true{
-		logger.Debug("Initialized by Reboot")
-		cleanUpVeths(s.VethEnv)
-		close(s.Endchan)
-		processes := s.Processes
-		logger.Debug("Runnig Processes:", processes)
-		killProcesses(processes)
-		exec.Command("rm", "/var/run/dhcpd.pid").Run()	//This is for DHCP server activation
-		exec.Command("touch", "/var/run/dhcpd.pid").Run()	//This is for DHCP server activation
-		s.Initialize()
-	}
-	olt := s.Olt
-	olt.InitializeStatus()
-	for intfid, _ := range s.Onumap{
-		for _, onu := range s.Onumap[intfid] {
-			onu.InitializeStatus()
-		}
-	}
+	logger.Debug("Initialized by Reboot")
+	s.Disable()
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) EnableIndication(empty *openolt.Empty, stream openolt.Openolt_EnableIndicationServer) error {
-	defer func() {
-		s.gRPCserver.Stop()
-	}()
-	s.EnableServer = &stream
 	logger.Info("OLT receives EnableInd.\n")
-	if err := s.activateOLT(stream); err != nil {
-		logger.Error("Failed to activate OLT: %v\n", err)
+	defer func() {
+		logger.Debug("grpc EnableIndication Done")
+	}()
+	if err := s.Enable(&stream); err != nil {
+		logger.Error("Failed to Enable Core: %v\n", err)
 		return err
 	}
-	logger.Debug("Core server down.")
 	return nil
 }
 
-func CreateGrpcServer(oltid uint32, npon uint32, nonus uint32, addrport string) (l net.Listener, g *grpc.Server, e error) {
+func NewGrpcServer(addrport string) (l net.Listener, g *grpc.Server, e error) {
 	logger.Info("Listening %s ...", addrport)
 	g = grpc.NewServer()
 	l, e = net.Listen("tcp", addrport)

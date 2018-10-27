@@ -17,12 +17,14 @@
 package core
 
 import (
+	"errors"
+	"gerrit.opencord.org/voltha-bbsim/common"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"gerrit.opencord.org/voltha-bbsim/common"
-	"errors"
 	"net"
+	"strconv"
+	"time"
 )
 
 func RecvWorker(io *Ioinfo, handler *pcap.Handle, r chan Packet) {
@@ -49,7 +51,7 @@ func SendUni(handle *pcap.Handle, packet gopacket.Packet) {
 
 func SendNni(handle *pcap.Handle, packet gopacket.Packet) {
 	err := handle.WritePacketData(packet.Data())
-	if err != nil{
+	if err != nil {
 		logger.Error("Error in send packet to NNI e:%s\n", err)
 	}
 	logger.Debug("send packet to NNI-IF: %v \n", *handle)
@@ -138,4 +140,48 @@ func getMacAddress(ifName string) net.HardwareAddr {
 		hwAddr = netIf.HardwareAddr
 	}
 	return hwAddr
+}
+
+func makeUniName(oltid uint32, intfid uint32, onuid uint32) (upif string, dwif string) {
+	upif = UNI_VETH_UP_PFX + strconv.Itoa(int(oltid)) + "_" + strconv.Itoa(int(intfid)) + "_" + strconv.Itoa(int(onuid))
+	dwif = UNI_VETH_DW_PFX + strconv.Itoa(int(oltid)) + "_" + strconv.Itoa(int(intfid)) + "_" + strconv.Itoa(int(onuid))
+	return
+}
+
+func makeNniName(oltid uint32) (upif string, dwif string) {
+	upif = NNI_VETH_UP_PFX + strconv.Itoa(int(oltid))
+	dwif = NNI_VETH_DW_PFX + strconv.Itoa(int(oltid))
+	return
+}
+
+func setupVethHandler(inveth string, outveth string, vethnames []string) (*pcap.Handle, []string, error) {
+	logger.Debug("SetupVethHandler(%s, %s) called ", inveth, outveth)
+	err1 := CreateVethPairs(inveth, outveth)
+	vethnames = append(vethnames, inveth)
+	if err1 != nil {
+		RemoveVeths(vethnames)
+		return nil, vethnames, err1
+	}
+	handler, err2 := getVethHandler(inveth)
+	if err2 != nil {
+		RemoveVeths(vethnames)
+		return nil, vethnames, err2
+	}
+	return handler, vethnames, nil
+}
+
+func getVethHandler(vethname string) (*pcap.Handle, error) {
+	var (
+		device       string = vethname
+		snapshot_len int32  = 1518
+		promiscuous  bool   = false
+		err          error
+		timeout      time.Duration = pcap.BlockForever
+	)
+	handle, err := pcap.OpenLive(device, snapshot_len, promiscuous, timeout)
+	if err != nil {
+		return nil, err
+	}
+	logger.Debug("Server handle is created for %s\n", vethname)
+	return handle, nil
 }

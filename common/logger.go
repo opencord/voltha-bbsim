@@ -17,35 +17,35 @@
 package logger
 
 import (
-	"strings"
 	"log"
+	"strings"
 )
 
-func Error(s string, opts ...interface{}){
+func Error(s string, opts ...interface{}) {
 	trimmed := strings.TrimRight(s, "\n")
-	if len(opts) == 0{
+	if len(opts) == 0 {
 		log.Printf("[ERROR]:%s\n", trimmed)
-	}else{
+	} else {
 		fmt := "[ERROR]:" + trimmed + "\n"
 		log.Printf(fmt, opts...)
 	}
 }
 
-func Debug(s string, opts ...interface{}){
+func Debug(s string, opts ...interface{}) {
 	trimmed := strings.TrimRight(s, "\n")
-	if len(opts) == 0{
+	if len(opts) == 0 {
 		log.Printf("[DEBUG]:%s\n", trimmed)
-	}else{
+	} else {
 		fmt := "[DEBUG]:" + trimmed + "\n"
 		log.Printf(fmt, opts...)
 	}
 }
 
-func Info(s string, opts ...interface{}){
+func Info(s string, opts ...interface{}) {
 	trimmed := strings.TrimRight(s, "\n")
-	if len(opts) == 0{
+	if len(opts) == 0 {
 		log.Printf("[INFO]:%s\n", trimmed)
-	}else{
+	} else {
 		fmt := "[INFO]:" + trimmed + "\n"
 		log.Printf(fmt, opts...)
 	}

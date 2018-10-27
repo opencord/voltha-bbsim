@@ -17,13 +17,14 @@
 package core
 
 import (
-	"github.com/google/gopacket/pcap"
-	"gerrit.opencord.org/voltha-bbsim/common"
 	"errors"
+	"gerrit.opencord.org/voltha-bbsim/common"
+	"github.com/google/gopacket/pcap"
+	"os/exec"
 )
 
 type Ioinfo struct {
-	name    string
+	Name    string
 	iotype  string //nni or uni
 	ioloc   string //inside or outsode
 	intfid  uint32
@@ -42,7 +43,7 @@ func (s *Server) identifyUniIoinfo(ioloc string, intfid uint32, onuid uint32) (*
 	return nil, err
 }
 
-func (s *Server) identifyNniIoinfo(ioloc string) (*Ioinfo, error) {
+func (s *Server) IdentifyNniIoinfo(ioloc string) (*Ioinfo, error) {
 	for _, ioinfo := range s.Ioinfos {
 		if ioinfo.iotype == "nni" && ioinfo.ioloc == ioloc {
 			return ioinfo, nil
@@ -53,7 +54,7 @@ func (s *Server) identifyNniIoinfo(ioloc string) (*Ioinfo, error) {
 	return nil, err
 }
 
-func (s *Server) getUniIoinfos(ioloc string) ([]*Ioinfo, error) {
+func (s *Server) GetUniIoinfos(ioloc string) ([]*Ioinfo, error) {
 	ioinfos := []*Ioinfo{}
 	for _, ioinfo := range s.Ioinfos {
 		if ioinfo.iotype == "uni" && ioinfo.ioloc == ioloc {
@@ -66,4 +67,42 @@ func (s *Server) getUniIoinfos(ioloc string) ([]*Ioinfo, error) {
 		return nil, err
 	}
 	return ioinfos, nil
+}
+
+func CreateVethPairs(name1 string, name2 string) (err error) {
+	err = exec.Command("ip", "link", "add", name1, "type", "veth", "peer", "name", name2).Run()
+	if err != nil {
+		logger.Error("Fail to createVeth() for %s and %s veth creation error: %s\n", name1, name2, err.Error())
+		return
+	}
+	logger.Info("%s & %s was created.", name1, name2)
+	err = exec.Command("ip", "link", "set", name1, "up").Run()
+	if err != nil {
+		logger.Error("Fail to createVeth() veth1 up", err)
+		return
+	}
+	err = exec.Command("ip", "link", "set", name2, "up").Run()
+	if err != nil {
+		logger.Error("Fail to createVeth() veth2 up", err)
+		return
+	}
+	logger.Info("%s & %s was up.", name1, name2)
+	return
+}
+
+func RemoveVeth(name string) error {
+	err := exec.Command("ip", "link", "del", name).Run()
+	if err != nil {
+		logger.Error("Fail to removeVeth()", err)
+	}
+	logger.Info("%s was removed.", name)
+	return err
+}
+
+func RemoveVeths(names []string) {
+	for _, name := range names {
+		RemoveVeth(name)
+	}
+	logger.Info("RemoveVeths() :%s\n", names)
+	return
 }

@@ -45,7 +45,7 @@ const (
 	ONU_DISCOVERED
 )
 
-func CreateOlt(oltid uint32, npon uint32, nnni uint32) *Olt {
+func NewOlt(oltid uint32, npon uint32, nnni uint32) *Olt {
 	olt := Olt{}
 	olt.ID = oltid
 	olt.NumPonIntf = npon
@@ -69,7 +69,7 @@ func CreateOlt(oltid uint32, npon uint32, nnni uint32) *Olt {
 	return &olt
 }
 
-func (olt *Olt)InitializeStatus(){
+func (olt *Olt) InitializeStatus() {
 	*olt.InternalState = PRE_ENABLE
 	olt.OperState = "up"
 	for i := uint32(0); i < olt.NumNniIntf; i++ {

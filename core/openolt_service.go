@@ -17,10 +17,10 @@
 package core
 
 import (
-	"time"
-	"gerrit.opencord.org/voltha-bbsim/protos"
-	"gerrit.opencord.org/voltha-bbsim/device"
 	"gerrit.opencord.org/voltha-bbsim/common"
+	"gerrit.opencord.org/voltha-bbsim/device"
+	"gerrit.opencord.org/voltha-bbsim/protos"
+	"time"
 )
 
 func sendOltIndUp(stream openolt.Openolt_EnableIndicationServer, olt *device.Olt) error {
