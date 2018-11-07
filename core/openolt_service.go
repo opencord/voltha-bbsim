@@ -17,10 +17,13 @@
 package core
 
 import (
-	"gerrit.opencord.org/voltha-bbsim/common"
+	"time"
+
+	"gerrit.opencord.org/voltha-bbsim/common/logger"
+	"gerrit.opencord.org/voltha-bbsim/common/utils"
 	"gerrit.opencord.org/voltha-bbsim/device"
 	"gerrit.opencord.org/voltha-bbsim/protos"
-	"time"
+	log "github.com/sirupsen/logrus"
 )
 
 func sendOltIndUp(stream openolt.Openolt_EnableIndicationServer, olt *device.Olt) error {
@@ -76,7 +79,12 @@ func sendOnuDiscInd(stream openolt.Openolt_EnableIndicationServer, onus []*devic
 			logger.Error("Failed to send ONUDiscInd [id: %d]: %v\n", i, err)
 			return err
 		}
-		logger.Info("sendONUDiscInd Onuid: %d\n", i)
+		logger.WithFields(log.Fields{
+			"serial_number": utils.OnuToSn(onu),
+			"interfaceId":   onu.IntfID,
+			"onuId":         onu.OnuID,
+			"oltId":         onu.OltID,
+		}).Info("sendONUDiscInd Onuid")
 	}
 	return nil
 }
@@ -89,7 +97,12 @@ func sendOnuInd(stream openolt.Openolt_EnableIndicationServer, onus []*device.On
 			logger.Error("Failed to send ONUInd [id: %d]: %v\n", i, err)
 			return err
 		}
-		logger.Info("sendONUInd Onuid: %d\n", i)
+		logger.WithFields(log.Fields{
+			"serial_number": utils.OnuToSn(onu),
+			"interfaceId":   onu.IntfID,
+			"onuId":         onu.OnuID,
+			"oltId":         onu.OltID,
+		}).Info("sendONUInd Onuid")
 	}
 	return nil
 }

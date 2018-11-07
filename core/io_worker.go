@@ -18,13 +18,14 @@ package core
 
 import (
 	"errors"
-	"gerrit.opencord.org/voltha-bbsim/common"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
 	"net"
 	"strconv"
 	"time"
+
+	"gerrit.opencord.org/voltha-bbsim/common/logger"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
 )
 
 func RecvWorker(io *Ioinfo, handler *pcap.Handle, r chan Packet) {
@@ -32,7 +33,7 @@ func RecvWorker(io *Ioinfo, handler *pcap.Handle, r chan Packet) {
 	packetSource := gopacket.NewPacketSource(handler, handler.LinkType())
 	for packet := range packetSource.Packets() {
 		logger.Debug("recv packet from IF: %v \n", *handler)
-		//log.Println(packet.Dump())
+		//logger.Println(packet.Dump())
 		pkt := Packet{}
 		pkt.Info = io
 		pkt.Pkt = packet
@@ -46,7 +47,7 @@ func SendUni(handle *pcap.Handle, packet gopacket.Packet) {
 		logger.Error("Error in send packet to UNI-IF: %v e:%s\n", *handle, err)
 	}
 	logger.Debug("Successfully send packet to UNI-IF: %v \n", *handle)
-	//log.Println(packet.Dump())
+	//logger.Println(packet.Dump())
 }
 
 func SendNni(handle *pcap.Handle, packet gopacket.Packet) {
@@ -55,7 +56,7 @@ func SendNni(handle *pcap.Handle, packet gopacket.Packet) {
 		logger.Error("Error in send packet to NNI e:%s\n", err)
 	}
 	logger.Debug("send packet to NNI-IF: %v \n", *handle)
-	//log.Println(packet.Dump())
+	//logger.Println(packet.Dump())
 }
 
 func PopVLAN(pkt gopacket.Packet) (gopacket.Packet, uint16, error) {

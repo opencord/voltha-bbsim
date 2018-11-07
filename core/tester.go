@@ -18,12 +18,13 @@ package core
 
 import (
 	"context"
-	"gerrit.opencord.org/voltha-bbsim/common"
-	"golang.org/x/sync/errgroup"
-	"log"
 	"os/exec"
-	"time"
 	"sync"
+	"time"
+
+	"gerrit.opencord.org/voltha-bbsim/common/logger"
+	log "github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -44,7 +45,7 @@ type Tester struct {
 	cancel       context.CancelFunc
 }
 
-func NewTester(opt *option) *Tester{
+func NewTester(opt *option) *Tester {
 	t := new(Tester)
 	t.AAAWait = opt.aaawait
 	t.DhcpWait = opt.dhcpwait
@@ -55,11 +56,11 @@ func NewTester(opt *option) *Tester{
 }
 
 //Blocking
-func (t *Tester) Start (s *Server) error {
+func (t *Tester) Start(s *Server) error {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	t.cancel = cancel
-	defer func(){
+	defer func() {
 		cancel()
 		t.Initialize()
 		logger.Debug("Tester Done")
@@ -106,15 +107,14 @@ func (t *Tester) Stop(s *Server) error {
 	return nil
 }
 
-func (t *Tester) Initialize (){
+func (t *Tester) Initialize() {
 	logger.Info("Tester Initialize () called")
 	processes := t.Processes
 	logger.Debug("Runnig Process: %s", processes)
 	KillProcesses(processes)
-	exec.Command("rm", "/var/run/dhcpd.pid").Run()	//This is for DHCP server activation
-	exec.Command("touch", "/var/run/dhcpd.pid").Run()	//This is for DHCP server activation
+	exec.Command("rm", "/var/run/dhcpd.pid").Run()    //This is for DHCP server activation
+	exec.Command("touch", "/var/run/dhcpd.pid").Run() //This is for DHCP server activation
 }
-
 
 func (t *Tester) exeAAATest(ctx context.Context, s *Server, wait int) error {
 	tick := time.NewTicker(time.Second)
@@ -130,17 +130,17 @@ func (t *Tester) exeAAATest(ctx context.Context, s *Server, wait int) error {
 		univeths = append(univeths, info.Name)
 	}
 
-	for sec := 1; sec <= wait; sec ++ {
+	for sec := 1; sec <= wait; sec++ {
 		select {
 		case <-ctx.Done():
 			logger.Debug("exeAAATest thread receives close ")
 			return nil
 		case <-tick.C:
-			logger.Info("exeAAATest stands by ... %dsec\n", wait - sec)
+			logger.WithField("seconds", wait-sec).Info("exeAAATest stands by ...")
 			if sec == wait {
 				wg := sync.WaitGroup{}
 				wg.Add(1)
-				go func() error{
+				go func() error {
 					defer wg.Done()
 					err = activateWPASups(ctx, univeths, t.Intvl)
 					if err != nil {
@@ -184,25 +184,27 @@ func (t *Tester) exeDHCPTest(ctx context.Context, s *Server, wait int) error {
 		univeths = append(univeths, info.Name)
 	}
 
-	for sec := 1; sec <= wait; sec ++ {
+	for sec := 1; sec <= wait; sec++ {
 		select {
-		case <- ctx.Done():
+		case <-ctx.Done():
 			logger.Debug("exeDHCPTest thread receives close ")
 			return nil
-		case <- tick.C:
-			logger.Info("exeDHCPTest stands by ... %dsec\n", wait- sec)
+		case <-tick.C:
+			logger.WithField("seconds", wait-sec).Info("exeDHCPTest stands by ...")
 			if sec == wait {
 				wg := sync.WaitGroup{}
 				wg.Add(1)
-				go func() error{
+				go func() error {
 					defer wg.Done()
 					err = activateDHCPClients(ctx, univeths, t.Intvl)
 					if err != nil {
 						return err
 					}
-					logger.Info("DHCP clients are successfully activated ")
+					logger.WithFields(log.Fields{
+						"univeths": univeths,
+					}).Info("DHCP clients are successfully activated")
 					t.Processes = append(t.Processes, "dhclient")
-					logger.Debug("Running Process:%s", t.Processes)
+					logger.Debug("Running Process: ", t.Processes)
 					return nil
 				}()
 				wg.Wait()
@@ -224,17 +226,17 @@ func activateWPASups(ctx context.Context, vethnames []string, intvl int) error {
 	defer tick.Stop()
 	i := 0
 	for {
-		select{
-		case <- tick.C:
+		select {
+		case <-tick.C:
 			if i < len(vethnames) {
 				vethname := vethnames[i]
 				if err := activateWPASupplicant(vethname); err != nil {
 					return err
 				}
 				logger.Debug("activateWPASupplicant for interface %v\n", vethname)
-				i ++
+				i++
 			}
-		case <- ctx.Done():
+		case <-ctx.Done():
 			logger.Debug("activateWPASups was canceled by context.")
 			return nil
 		}
@@ -247,17 +249,19 @@ func activateDHCPClients(ctx context.Context, vethnames []string, intvl int) err
 	defer tick.Stop()
 	i := 0
 	for {
-		select{
-		case <- tick.C:
-			if i < len(vethnames){
+		select {
+		case <-tick.C:
+			if i < len(vethnames) {
 				vethname := vethnames[i]
 				if err := activateDHCPClient(vethname); err != nil {
 					return err
 				}
-				logger.Debug("activateDHCPClient for interface %v\n", vethname)
-				i ++
+				logger.WithFields(log.Fields{
+					"interface": vethname,
+				}).Debug("activateDHCPClient")
+				i++
 			}
-		case <- ctx.Done():
+		case <-ctx.Done():
 			logger.Debug("activateDHCPClients was canceled by context.")
 			return nil
 		}
@@ -293,7 +297,7 @@ func activateDHCPClient(vethname string) (err error) {
 	// if err := cmd.Run(); err != nil {
 	if err := cmd.Start(); err != nil {
 		logger.Error("Fail to activateDHCPClient() for: %s", vethname)
-		log.Panic(err)
+		logger.Panic(err)
 	}
 	logger.Debug("activateDHCPClient() done for: %s\n", vethname)
 	return

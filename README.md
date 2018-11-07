@@ -51,9 +51,9 @@ success (device id = <deviceid>)
 Usage of ./bbsim:
   -H string
     	IP address:port (default ":50060")
-  -a int
+  -aw int
     	Wait time (sec) for activation WPA supplicants (default 30)
-  -d int
+  -dw int
     	Wait time (sec) for activation DHCP clients (default 10)
   -i int
     	Number of PON-IF ports (default 1)

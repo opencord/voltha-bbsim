@@ -17,11 +17,11 @@
 package main
 
 import (
-	"gerrit.opencord.org/voltha-bbsim/core"
 	"log"
+
+	"gerrit.opencord.org/voltha-bbsim/common/logger"
+	"gerrit.opencord.org/voltha-bbsim/core"
 )
-
-
 
 func printBanner() {
 	log.Println("     ________    _______   ________                 ")
@@ -33,10 +33,13 @@ func printBanner() {
 }
 
 func main() {
+
 	// CLI Shows up
 	printBanner()
 	opt := core.GetOptions()
+	logger.Setup(opt.KafkaBroker, "DEBUG")
 
 	mediator := core.NewMediator(opt)
+
 	mediator.Start()
 }
