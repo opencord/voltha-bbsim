@@ -129,7 +129,7 @@ func (m *mediator) Start() {
 	wg.Add(1)
 	go func() {
 		if err := server.Start(); err != nil { //Blocking
-			logger.Error(err)
+			logger.Error("Start %s", err)
 		}
 		wg.Done()
 		return

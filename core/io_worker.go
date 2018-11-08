@@ -32,7 +32,7 @@ func RecvWorker(io *Ioinfo, handler *pcap.Handle, r chan Packet) {
 	logger.Debug("recvWorker runs. handler: %v", *handler)
 	packetSource := gopacket.NewPacketSource(handler, handler.LinkType())
 	for packet := range packetSource.Packets() {
-		logger.Debug("recv packet from IF: %v \n", *handler)
+		logger.Debug("recv packet from IF: %v ", *handler)
 		//logger.Println(packet.Dump())
 		pkt := Packet{}
 		pkt.Info = io
@@ -44,18 +44,18 @@ func RecvWorker(io *Ioinfo, handler *pcap.Handle, r chan Packet) {
 func SendUni(handle *pcap.Handle, packet gopacket.Packet) {
 	err := handle.WritePacketData(packet.Data())
 	if err != nil {
-		logger.Error("Error in send packet to UNI-IF: %v e:%s\n", *handle, err)
+		logger.Error("Error in send packet to UNI-IF: %v e:%s", *handle, err)
 	}
-	logger.Debug("Successfully send packet to UNI-IF: %v \n", *handle)
+	logger.Debug("Successfully send packet to UNI-IF: %v ", *handle)
 	//logger.Println(packet.Dump())
 }
 
 func SendNni(handle *pcap.Handle, packet gopacket.Packet) {
 	err := handle.WritePacketData(packet.Data())
 	if err != nil {
-		logger.Error("Error in send packet to NNI e:%s\n", err)
+		logger.Error("Error in send packet to NNI e:%s", err)
 	}
-	logger.Debug("send packet to NNI-IF: %v \n", *handle)
+	logger.Debug("send packet to NNI-IF: %v ", *handle)
 	//logger.Println(packet.Dump())
 }
 
@@ -183,6 +183,6 @@ func getVethHandler(vethname string) (*pcap.Handle, error) {
 	if err != nil {
 		return nil, err
 	}
-	logger.Debug("Server handle is created for %s\n", vethname)
+	logger.Debug("Server handle is created for %s", vethname)
 	return handle, nil
 }

@@ -41,7 +41,7 @@ func (s *Server) identifyUniIoinfo(ioloc string, intfid uint32, onuid uint32) (*
 		}
 	}
 	err := errors.New("No matched Ioinfo is found")
-	logger.Error(err)
+	logger.Error("identifyUniIoinfo %s", err)
 	return nil, err
 }
 
@@ -52,7 +52,7 @@ func (s *Server) IdentifyNniIoinfo(ioloc string) (*Ioinfo, error) {
 		}
 	}
 	err := errors.New("No matched Ioinfo is found")
-	logger.Error(err)
+	logger.Error("IdentifyNniIoinfo %s", err)
 	return nil, err
 }
 
@@ -65,7 +65,7 @@ func (s *Server) GetUniIoinfos(ioloc string) ([]*Ioinfo, error) {
 	}
 	if len(ioinfos) == 0 {
 		err := errors.New("No matched Ioinfo is found")
-		logger.Error(err)
+		logger.Error("GetUniIoinfos %s", err)
 		return nil, err
 	}
 	return ioinfos, nil

@@ -19,11 +19,29 @@ package utils
 import (
 	"fmt"
 
+	"gerrit.opencord.org/voltha-bbsim/common/logger"
+
 	"gerrit.opencord.org/voltha-bbsim/device"
+	log "github.com/sirupsen/logrus"
 )
 
 func OnuToSn(onu *device.Onu) string {
-	// TODO this can be more elegant,
+	// FIXME
 	// see https://github.com/opencord/voltha/blob/master/voltha/adapters/openolt/openolt_device.py#L929-L943
-	return string(onu.SerialNumber.VendorId) + "00000" + fmt.Sprint(onu.IntfID) + "0" + fmt.Sprintf("%x", onu.OnuID)
+	return string(onu.SerialNumber.VendorId) + "00000" + fmt.Sprint(onu.IntfID) + "0" + fmt.Sprintf("%x", onu.OnuID-1)
+}
+
+func LoggerWithOnu(onu *device.Onu) *log.Entry {
+
+	if onu == nil {
+		logger.Warn("utils.LoggerWithOnu has been called without Onu")
+		return logger.GetLogger()
+	}
+
+	return logger.WithFields(log.Fields{
+		"serial_number": OnuToSn(onu),
+		"interfaceId":   onu.IntfID,
+		"onuId":         onu.OnuID,
+		"oltId":         onu.OltID,
+	})
 }

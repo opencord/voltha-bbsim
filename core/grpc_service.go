@@ -20,131 +20,134 @@ import (
 	"net"
 
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
+	"gerrit.opencord.org/voltha-bbsim/common/utils"
 	"gerrit.opencord.org/voltha-bbsim/device"
 	"gerrit.opencord.org/voltha-bbsim/protos"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
 
 // gRPC Service
 func (s *Server) DisableOlt(c context.Context, empty *openolt.Empty) (*openolt.Empty, error) {
-	logger.Info("OLT receives DisableOLT()\n")
+	logger.Debug("OLT receives DisableOLT()")
 	if s.EnableServer != nil {
 		if err := sendOltIndDown(*s.EnableServer); err != nil {
 			return new(openolt.Empty), err
 		}
-		logger.Info("Successfuly sent OLT DOWN indication")
+		logger.Debug("Successfuly sent OLT DOWN indication")
 	}
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) ReenableOlt(c context.Context, empty *openolt.Empty) (*openolt.Empty, error) {
-	logger.Info("OLT receives Reenable()\n")
+	logger.Debug("OLT receives Reenable()")
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) CollectStatistics(c context.Context, empty *openolt.Empty) (*openolt.Empty, error) {
-	logger.Info("OLT receives CollectStatistics()\n")
+	logger.Debug("OLT receives CollectStatistics()")
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) GetDeviceInfo(c context.Context, empty *openolt.Empty) (*openolt.DeviceInfo, error) {
-    logger.Info("OLT receives GetDeviceInfo()\n")
-    devinfo := new(openolt.DeviceInfo)
-    devinfo.Vendor = "EdgeCore"
-    devinfo.Model = "asfvolt16"
-    devinfo.HardwareVersion = ""
-    devinfo.FirmwareVersion = ""
-    devinfo.Technology = "xgspon"
-    devinfo.PonPorts = 1
-    devinfo.OnuIdStart = 1
-    devinfo.OnuIdEnd = 255
-    devinfo.AllocIdStart = 1024
-    devinfo.AllocIdEnd = 16383
-    devinfo.GemportIdStart = 1024
-    devinfo.GemportIdEnd = 65535
-    devinfo.FlowIdStart = 1
-    devinfo.FlowIdEnd = 16383
+	logger.Debug("OLT receives GetDeviceInfo()")
+	devinfo := new(openolt.DeviceInfo)
+	devinfo.Vendor = "EdgeCore"
+	devinfo.Model = "asfvolt16"
+	devinfo.HardwareVersion = ""
+	devinfo.FirmwareVersion = ""
+	devinfo.Technology = "xgspon"
+	devinfo.PonPorts = 1
+	devinfo.OnuIdStart = 1
+	devinfo.OnuIdEnd = 255
+	devinfo.AllocIdStart = 1024
+	devinfo.AllocIdEnd = 16383
+	devinfo.GemportIdStart = 1024
+	devinfo.GemportIdEnd = 65535
+	devinfo.FlowIdStart = 1
+	devinfo.FlowIdEnd = 16383
 
-     /*
-     for intf_id := 0; intf_id < 16; intf_id++ {
-        r := new(openolt.DeviceInfo_DeviceResourceRanges)
+	/*
+	    for intf_id := 0; intf_id < 16; intf_id++ {
+	       r := new(openolt.DeviceInfo_DeviceResourceRanges)
 
-        r.IntfIds = append(r.IntfIds, uint32(intf_id))
+	       r.IntfIds = append(r.IntfIds, uint32(intf_id))
 
-        r.Technology = "xgspon"
+	       r.Technology = "xgspon"
 
-        p := new(openolt.DeviceInfo_DeviceResourceRanges_Pool)
-        p.Type = openolt.DeviceInfo_DeviceResourceRanges_Pool_ONU_ID
-        p.Sharing = openolt.DeviceInfo_DeviceResourceRanges_Pool_DEDICATED_PER_INTF
-        p.Start = 1
-        p.End = 255
-        r.Pools = append(r.Pools, p)
+	       p := new(openolt.DeviceInfo_DeviceResourceRanges_Pool)
+	       p.Type = openolt.DeviceInfo_DeviceResourceRanges_Pool_ONU_ID
+	       p.Sharing = openolt.DeviceInfo_DeviceResourceRanges_Pool_DEDICATED_PER_INTF
+	       p.Start = 1
+	       p.End = 255
+	       r.Pools = append(r.Pools, p)
 
-        p = new(openolt.DeviceInfo_DeviceResourceRanges_Pool)
-        p.Type = openolt.DeviceInfo_DeviceResourceRanges_Pool_ALLOC_ID
-        p.Sharing = openolt.DeviceInfo_DeviceResourceRanges_Pool_SHARED_BY_ALL_INTF_SAME_TECH
-        p.Start = 1024
-        p.End = 16383
-        r.Pools = append(r.Pools, p)
+	       p = new(openolt.DeviceInfo_DeviceResourceRanges_Pool)
+	       p.Type = openolt.DeviceInfo_DeviceResourceRanges_Pool_ALLOC_ID
+	       p.Sharing = openolt.DeviceInfo_DeviceResourceRanges_Pool_SHARED_BY_ALL_INTF_SAME_TECH
+	       p.Start = 1024
+	       p.End = 16383
+	       r.Pools = append(r.Pools, p)
 
-        p = new(openolt.DeviceInfo_DeviceResourceRanges_Pool)
-        p.Type = openolt.DeviceInfo_DeviceResourceRanges_Pool_GEMPORT_ID
-        p.Sharing = openolt.DeviceInfo_DeviceResourceRanges_Pool_SHARED_BY_ALL_INTF_ALL_TECH
-        p.Start = 1024
-        p.End = 65535
-        r.Pools = append(r.Pools, p)
+	       p = new(openolt.DeviceInfo_DeviceResourceRanges_Pool)
+	       p.Type = openolt.DeviceInfo_DeviceResourceRanges_Pool_GEMPORT_ID
+	       p.Sharing = openolt.DeviceInfo_DeviceResourceRanges_Pool_SHARED_BY_ALL_INTF_ALL_TECH
+	       p.Start = 1024
+	       p.End = 65535
+	       r.Pools = append(r.Pools, p)
 
-        p = new(openolt.DeviceInfo_DeviceResourceRanges_Pool)
-        p.Type = openolt.DeviceInfo_DeviceResourceRanges_Pool_FLOW_ID
-        p.Sharing = openolt.DeviceInfo_DeviceResourceRanges_Pool_SHARED_BY_ALL_INTF_ALL_TECH
-        p.Start = 1
-        p.End = 16383
-        r.Pools = append(r.Pools, p)
+	       p = new(openolt.DeviceInfo_DeviceResourceRanges_Pool)
+	       p.Type = openolt.DeviceInfo_DeviceResourceRanges_Pool_FLOW_ID
+	       p.Sharing = openolt.DeviceInfo_DeviceResourceRanges_Pool_SHARED_BY_ALL_INTF_ALL_TECH
+	       p.Start = 1
+	       p.End = 16383
+	       r.Pools = append(r.Pools, p)
 
-        devinfo.Ranges = append(devinfo.Ranges, r)
-    }
-    */
+	       devinfo.Ranges = append(devinfo.Ranges, r)
+	   }
+	*/
 
 	return devinfo, nil
 }
 
 func (s *Server) ActivateOnu(c context.Context, onu *openolt.Onu) (*openolt.Empty, error) {
-	logger.Info("OLT receives ActivateONU()\n")
+	logger.Debug("OLT receives ActivateONU()")
 	result := device.ValidateONU(*onu, s.Onumap)
 	if result == true {
 		matched, error := getOnuBySN(s.Onumap, onu.SerialNumber)
 		if error != nil {
-			logger.Fatal("%s\n", error)
+			logger.Fatal("%s", error)
 		}
 		onuid := onu.OnuId
 		matched.OnuID = onuid
 		matched.UpdateIntStatus(device.ONU_ACTIVATED)
-		logger.Info("ONU IntfID: %d OnuID: %d activated succesufully.\n", onu.IntfId, onu.OnuId)
+		logger.Debug("ONU IntfID: %d OnuID: %d activated succesufully.", onu.IntfId, onu.OnuId)
 	}
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) DeactivateOnu(c context.Context, onu *openolt.Onu) (*openolt.Empty, error) {
-	logger.Info("OLT receives DeactivateONU()\n")
+	logger.Debug("OLT receives DeactivateONU()")
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) DeleteOnu(c context.Context, onu *openolt.Onu) (*openolt.Empty, error) {
-	logger.Info("OLT receives DeleteONU()\n")
+	logger.Debug("OLT receives DeleteONU()")
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) OmciMsgOut(c context.Context, msg *openolt.OmciMsg) (*openolt.Empty, error) {
-	logger.Info("OLT %d receives OmciMsgOut to IF %v (ONU-ID: %v) pkt:%x.\n", s.Olt.ID, msg.IntfId, msg.OnuId, msg.Pkt)
+	logger.Debug("OLT %d receives OmciMsgOut to IF %v (ONU-ID: %v) pkt:%x.", s.Olt.ID, msg.IntfId, msg.OnuId, msg.Pkt)
 	//s.olt.Queue = append(s.olt.Queue, *msg)
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) OnuPacketOut(c context.Context, packet *openolt.OnuPacket) (*openolt.Empty, error) {
-	logger.Info("OLT %d receives OnuPacketOut () to IF-ID:%d ONU-ID %d.\n", s.Olt.ID, packet.IntfId, packet.OnuId)
+	onu, _ := s.GetOnuByID(packet.OnuId)
+	utils.LoggerWithOnu(onu).Debug("OLT %d receives OnuPacketOut () to IF-ID:%d ONU-ID %d.", s.Olt.ID, packet.IntfId, packet.OnuId)
 	onuid := packet.OnuId
 	intfid := packet.IntfId
 	rawpkt := gopacket.NewPacket(packet.Pkt, layers.LayerTypeEthernet, gopacket.Default)
@@ -155,7 +158,7 @@ func (s *Server) OnuPacketOut(c context.Context, packet *openolt.OnuPacket) (*op
 }
 
 func (s *Server) UplinkPacketOut(c context.Context, packet *openolt.UplinkPacket) (*openolt.Empty, error) {
-	logger.Info("OLT %d receives UplinkPacketOut().\n", s.Olt.ID)
+	logger.Debug("OLT %d receives UplinkPacketOut().", s.Olt.ID)
 	rawpkt := gopacket.NewPacket(packet.Pkt, layers.LayerTypeEthernet, gopacket.Default)
 	if err := s.uplinkPacketOut(rawpkt); err != nil {
 		return new(openolt.Empty), err
@@ -164,38 +167,47 @@ func (s *Server) UplinkPacketOut(c context.Context, packet *openolt.UplinkPacket
 }
 
 func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty, error) {
-	logger.Info("OLT %d receives FlowAdd().\n", s.Olt.ID)
-	logger.Debug("Flow's ONU-ID: %d, CTAG: %d\n", flow.OnuId, flow.Action.IVid)
-	//onuid := uint32(flow.OnuId)
-	//ctag := flow.Action.IVid
-	//s.CtagMap[onuid] = ctag
+
+	onu, _ := s.GetOnuByID(uint32(flow.OnuId))
+
+	utils.LoggerWithOnu(onu).WithFields(log.Fields{
+		"olt":   s.Olt.ID,
+		"c_tag": flow.Action.IVid,
+	}).Debug("OLT receives FlowAdd().")
+
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) FlowRemove(c context.Context, flow *openolt.Flow) (*openolt.Empty, error) {
-	logger.Info("OLT %d receives FlowRemove().\n", s.Olt.ID)
+	onu, _ := s.GetOnuByID(uint32(flow.OnuId))
+
+	utils.LoggerWithOnu(onu).WithFields(log.Fields{
+		"olt":   s.Olt.ID,
+		"c_tag": flow.Action.IVid,
+	}).Debug("OLT receives FlowRemove().")
+
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) HeartbeatCheck(c context.Context, empty *openolt.Empty) (*openolt.Heartbeat, error) {
-	logger.Info("OLT %d receives HeartbeatCheck().\n", s.Olt.ID)
+	logger.Debug("OLT %d receives HeartbeatCheck().", s.Olt.ID)
 	signature := new(openolt.Heartbeat)
 	signature.HeartbeatSignature = s.Olt.HeartbeatSignature
 	return signature, nil
 }
 
 func (s *Server) EnablePonIf(c context.Context, intf *openolt.Interface) (*openolt.Empty, error) {
-	logger.Info("OLT %d receives EnablePonIf().\n", s.Olt.ID)
+	logger.Debug("OLT %d receives EnablePonIf().", s.Olt.ID)
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) DisablePonIf(c context.Context, intf *openolt.Interface) (*openolt.Empty, error) {
-	logger.Info("OLT %d receives DisablePonIf().\n", s.Olt.ID)
+	logger.Debug("OLT %d receives DisablePonIf().", s.Olt.ID)
 	return new(openolt.Empty), nil
 }
 
 func (s *Server) Reboot(c context.Context, empty *openolt.Empty) (*openolt.Empty, error) {
-	logger.Info("OLT %d receives Reboot ().\n", s.Olt.ID)
+	logger.Debug("OLT %d receives Reboot ().", s.Olt.ID)
 	// Initialize OLT & Env
 	logger.Debug("Initialized by Reboot")
 	s.Disable()
@@ -203,19 +215,19 @@ func (s *Server) Reboot(c context.Context, empty *openolt.Empty) (*openolt.Empty
 }
 
 func (s *Server) EnableIndication(empty *openolt.Empty, stream openolt.Openolt_EnableIndicationServer) error {
-	logger.Info("OLT receives EnableInd.\n")
+	logger.Debug("OLT receives EnableInd.")
 	defer func() {
 		logger.Debug("grpc EnableIndication Done")
 	}()
 	if err := s.Enable(&stream); err != nil {
-		logger.Error("Failed to Enable Core: %v\n", err)
+		logger.Error("Failed to Enable Core: %v", err)
 		return err
 	}
 	return nil
 }
 
 func NewGrpcServer(addrport string) (l net.Listener, g *grpc.Server, e error) {
-	logger.Info("Listening %s ...", addrport)
+	logger.Debug("Listening %s ...", addrport)
 	g = grpc.NewServer()
 	l, e = net.Listen("tcp", addrport)
 	return

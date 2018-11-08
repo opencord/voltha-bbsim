@@ -98,7 +98,7 @@ func NewCore(opt *option) *Server {
 	}
 
 	nnni := s.Olt.NumNniIntf
-	logger.Info("OLT ID: %d was retrieved.\n", s.Olt.ID)
+	logger.Info("OLT ID: %d was retrieved.", s.Olt.ID)
 	for intfid := nnni; intfid < npon+nnni; intfid++ {
 		s.Onumap[intfid] = device.NewOnus(oltid, intfid, nonus, nnni)
 	}
@@ -204,23 +204,23 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 	}
 	olt.OperState = "up"
 	*olt.InternalState = device.OLT_UP
-	logger.Info("OLT %s sent OltInd.\n", olt.Name)
+	logger.Info("OLT %s sent OltInd.", olt.Name)
 
 	// OLT sends Interface Indication to Adapter
 	if err := sendIntfInd(stream, olt); err != nil {
-		logger.Error("Fail to sendIntfInd: %v\n", err)
+		logger.Error("Fail to sendIntfInd: %v", err)
 		return err
 	}
-	logger.Info("OLT %s sent IntfInd.\n", olt.Name)
+	logger.Info("OLT %s sent IntfInd.", olt.Name)
 
 	// OLT sends Operation Indication to Adapter after activating each interface
 	//time.Sleep(IF_UP_TIME * time.Second)
 	*olt.InternalState = device.PONIF_UP
 	if err := sendOperInd(stream, olt); err != nil {
-		logger.Error("Fail to sendOperInd: %v\n", err)
+		logger.Error("Fail to sendOperInd: %v", err)
 		return err
 	}
-	logger.Info("OLT %s sent OperInd.\n", olt.Name)
+	logger.Info("OLT %s sent OperInd.", olt.Name)
 
 	// OLT sends ONU Discover Indication to Adapter after ONU discovery
 	for intfid, _ := range s.Onumap {
@@ -229,7 +229,7 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 
 	for intfid, _ := range s.Onumap {
 		sendOnuDiscInd(stream, s.Onumap[intfid])
-		logger.Info("OLT id:%d sent ONUDiscInd.\n", olt.ID)
+		logger.Info("OLT id:%d sent ONUDiscInd.", olt.ID)
 	}
 
 	// OLT Sends OnuInd after waiting all of those ONUs up
@@ -242,7 +242,7 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 
 	for intfid, _ := range s.Onumap {
 		sendOnuInd(stream, s.Onumap[intfid], s.IndInterval)
-		logger.Info("OLT id:%d sent ONUInd.\n", olt.ID)
+		logger.Info("OLT id:%d sent ONUInd.", olt.ID)
 	}
 	return nil
 }
@@ -327,7 +327,7 @@ func (s *Server) runPacketInDaemon(ctx context.Context, stream openolt.Openolt_E
 			onuid := onu.OnuID
 			ioinfo, err := s.identifyUniIoinfo("inside", intfid, onuid)
 			if err != nil {
-				logger.Error("Fail to identifyUniIoinfo (onuid: %d): %v\n", onuid, err)
+				utils.LoggerWithOnu(onu).Error("Fail to identifyUniIoinfo (onuid: %d): %v", onuid, err)
 				return err
 			}
 			uhandler := ioinfo.handler
@@ -350,7 +350,7 @@ func (s *Server) runPacketInDaemon(ctx context.Context, stream openolt.Openolt_E
 		case unipkt := <-unichannel:
 			logger.Debug("Received packet in grpc Server from UNI.")
 			if unipkt.Info == nil || unipkt.Info.iotype != "uni" {
-				logger.Info("WARNING: This packet does not come from UNI ")
+				logger.Debug("WARNING: This packet does not come from UNI ")
 				continue
 			}
 
@@ -361,57 +361,39 @@ func (s *Server) runPacketInDaemon(ctx context.Context, stream openolt.Openolt_E
 			layerEth := pkt.Layer(layers.LayerTypeEthernet)
 			le, _ := layerEth.(*layers.Ethernet)
 			ethtype := le.EthernetType
-			onu, _ := getOnuByID(s.Onumap, onuid)
+			onu, _ := s.GetOnuByID(onuid)
 
 			if ethtype == 0x888e {
-				logger.WithFields(log.Fields{
-					"serial_number": utils.OnuToSn(onu),
-					"gemId":         gemid,
-					"interfaceId":   intfid,
-					"onuId":         onuid,
-				}).Debug("Received upstream packet is EAPOL.")
+				utils.LoggerWithOnu(onu).WithFields(log.Fields{
+					"gemId": gemid,
+				}).Info("Received upstream packet is EAPOL.")
 			} else if layerDHCP := pkt.Layer(layers.LayerTypeDHCPv4); layerDHCP != nil {
-				logger.WithFields(log.Fields{
-					"serial_number": utils.OnuToSn(onu),
-					"gemId":         gemid,
-					"interfaceId":   intfid,
-					"onuId":         onuid,
-				}).Debug("Received upstream packet is DHCP.")
+				utils.LoggerWithOnu(onu).WithFields(log.Fields{
+					"gemId": gemid,
+				}).Info("Received upstream packet is DHCP.")
 
 				//C-TAG
 				sn := convB2S(onu.SerialNumber.VendorSpecific)
 				if ctag, ok := s.CtagMap[sn]; ok == true {
 					tagpkt, err := PushVLAN(pkt, uint16(ctag))
 					if err != nil {
-						logger.WithFields(log.Fields{
-							"serial_number": utils.OnuToSn(onu),
-							"gemId":         gemid,
-							"interfaceId":   intfid,
-							"onuId":         onuid,
+						utils.LoggerWithOnu(onu).WithFields(log.Fields{
+							"gemId": gemid,
 						}).Error("Fail to tag C-tag")
 					} else {
 						pkt = tagpkt
 					}
 				} else {
-					logger.WithFields(log.Fields{
-						"serial_number": utils.OnuToSn(onu),
-						"gemId":         gemid,
-						"interfaceId":   intfid,
-						"onuId":         onuid,
-						"sn":            sn,
-						"cTagMap":       s.CtagMap,
+					utils.LoggerWithOnu(onu).WithFields(log.Fields{
+						"gemId":   gemid,
+						"cTagMap": s.CtagMap,
 					}).Error("Could not find onuid in CtagMap", onuid, sn, s.CtagMap)
 				}
 			} else {
 				continue
 			}
 
-			logger.WithFields(log.Fields{
-				"serial_number": utils.OnuToSn(onu),
-				"gemId":         gemid,
-				"interfaceId":   intfid,
-				"onuId":         onuid,
-			}).Debug("sendPktInd")
+			utils.LoggerWithOnu(onu).Info("sendPktInd - UNI Packet")
 			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "pon", IntfId: intfid, GemportId: gemid, Pkt: pkt.Data()}}
 			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
 				logger.Error("Fail to send PktInd indication.", err)
@@ -420,19 +402,16 @@ func (s *Server) runPacketInDaemon(ctx context.Context, stream openolt.Openolt_E
 
 		case nnipkt := <-nnichannel:
 			if nnipkt.Info == nil || nnipkt.Info.iotype != "nni" {
-				logger.Info("WARNING: This packet does not come from NNI ")
+				logger.Debug("WARNING: This packet does not come from NNI ")
 				continue
 			}
 			onuid := nnipkt.Info.onuid
 			onu, _ := getOnuByID(s.Onumap, onuid)
 
-			logger.Debug("Received packet in grpc Server from NNI.")
+			utils.LoggerWithOnu(onu).Info("Received packet in grpc Server from NNI.")
 			intfid := nnipkt.Info.intfid
 			pkt := nnipkt.Pkt
-			logger.WithFields(log.Fields{
-				"interfaceId":   intfid,
-				"serial_number": utils.OnuToSn(onu),
-			}).Info("sendPktInd")
+			utils.LoggerWithOnu(onu).Info("sendPktInd - NNI Packet")
 			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "nni", IntfId: intfid, Pkt: pkt.Data()}}
 			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
 				logger.Error("Fail to send PktInd indication.", err)
@@ -453,15 +432,15 @@ func (s *Server) runPacketInDaemon(ctx context.Context, stream openolt.Openolt_E
 
 func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packet) error {
 	layerEth := rawpkt.Layer(layers.LayerTypeEthernet)
+	onu, _ := s.GetOnuByID(onuid)
+
 	if layerEth != nil {
 		pkt, _ := layerEth.(*layers.Ethernet)
 		ethtype := pkt.EthernetType
 		if ethtype == 0x888e {
-			logger.Debug("Received downstream packet is EAPOL.")
-			//logger.Println(rawpkt.Dump())
+			utils.LoggerWithOnu(onu).Info("Received downstream packet is EAPOL.")
 		} else if layerDHCP := rawpkt.Layer(layers.LayerTypeDHCPv4); layerDHCP != nil {
-			logger.Debug("Received downstream packet is DHCP.")
-			//logger.Println(rawpkt.Dump())
+			utils.LoggerWithOnu(onu).Info("Received downstream packet is DHCP.")
 			rawpkt, _, _ = PopVLAN(rawpkt)
 			rawpkt, _, _ = PopVLAN(rawpkt)
 		} else {
@@ -525,6 +504,10 @@ func getOnuBySN(onumap map[uint32][]*device.Onu, sn *openolt.SerialNumber) (*dev
 	return nil, err
 }
 
+func (s *Server) GetOnuByID(onuid uint32) (*device.Onu, error) {
+	return getOnuByID(s.Onumap, onuid)
+}
+
 func getOnuByID(onumap map[uint32][]*device.Onu, onuid uint32) (*device.Onu, error) {
 	for _, onus := range onumap {
 		for _, onu := range onus {
@@ -534,7 +517,10 @@ func getOnuByID(onumap map[uint32][]*device.Onu, onuid uint32) (*device.Onu, err
 		}
 	}
 	err := errors.New("No matched OnuID is found ")
-	logger.Error("%s", err)
+	logger.WithFields(log.Fields{
+		"onumap": onumap,
+		"onuid":  onuid,
+	}).Error(err)
 	return nil, err
 }
 

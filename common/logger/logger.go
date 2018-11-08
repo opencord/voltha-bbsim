@@ -30,6 +30,7 @@ var (
 func Setup(kafkaBroker string, level string) {
 
 	logger := log.New()
+	logger.SetReportCaller(true)
 	myLogger = logger.WithField("topics", []string{"bbsim.log"})
 
 	// TODO make this configurable via cli arg
@@ -63,6 +64,10 @@ func Setup(kafkaBroker string, level string) {
 	myLogger.WithField("kafkaBroker", kafkaBroker).Debug("Logger setup done")
 }
 
+func GetLogger() *log.Entry {
+	return myLogger
+}
+
 func WithField(key string, value interface{}) *log.Entry {
 	return myLogger.WithField(key, value)
 }
@@ -71,26 +76,26 @@ func WithFields(fields log.Fields) *log.Entry {
 	return myLogger.WithFields(fields)
 }
 
-func Panic(args ...interface{}) {
-	myLogger.Panic(fmt.Sprint(args...))
+func Panic(msg string, args ...interface{}) {
+	myLogger.Panic(fmt.Sprintf(msg, args...))
 }
 
-func Fatal(args ...interface{}) {
-	myLogger.Fatal(fmt.Sprint(args...))
+func Fatal(msg string, args ...interface{}) {
+	myLogger.Fatal(fmt.Sprintf(msg, args...))
 }
 
-func Error(args ...interface{}) {
-	myLogger.Error(fmt.Sprint(args...))
+func Error(msg string, args ...interface{}) {
+	myLogger.Error(fmt.Sprintf(msg, args...))
 }
 
-func Warn(args ...interface{}) {
-	myLogger.Warn(fmt.Sprint(args...))
+func Warn(msg string, args ...interface{}) {
+	myLogger.Warn(fmt.Sprintf(msg, args...))
 }
 
-func Info(args ...interface{}) {
-	myLogger.Info(fmt.Sprint(args...))
+func Info(msg string, args ...interface{}) {
+	myLogger.Info(fmt.Sprintf(msg, args...))
 }
 
-func Debug(args ...interface{}) {
-	myLogger.Debug(fmt.Sprint(args...))
+func Debug(msg string, args ...interface{}) {
+	myLogger.Debug(fmt.Sprintf(msg, args...))
 }
