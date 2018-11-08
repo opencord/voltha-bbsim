@@ -17,15 +17,15 @@
 package core
 
 import (
-	"gerrit.opencord.org/voltha-bbsim/common"
+	"net"
+
+	"gerrit.opencord.org/voltha-bbsim/common/logger"
 	"gerrit.opencord.org/voltha-bbsim/device"
 	"gerrit.opencord.org/voltha-bbsim/protos"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"log"
-	"net"
 )
 
 // gRPC Service
@@ -117,7 +117,7 @@ func (s *Server) ActivateOnu(c context.Context, onu *openolt.Onu) (*openolt.Empt
 	if result == true {
 		matched, error := getOnuBySN(s.Onumap, onu.SerialNumber)
 		if error != nil {
-			log.Fatalf("%s\n", error)
+			logger.Fatal("%s\n", error)
 		}
 		onuid := onu.OnuId
 		matched.OnuID = onuid

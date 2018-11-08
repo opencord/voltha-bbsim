@@ -17,10 +17,12 @@
 package device
 
 import (
-	"gerrit.opencord.org/voltha-bbsim/common"
-	"gerrit.opencord.org/voltha-bbsim/protos"
 	"reflect"
 	"sync"
+
+	"gerrit.opencord.org/voltha-bbsim/common/logger"
+	"gerrit.opencord.org/voltha-bbsim/protos"
+	log "github.com/sirupsen/logrus"
 )
 
 type onuState int
@@ -32,6 +34,7 @@ const (
 
 type Onu struct {
 	InternalState *onuState
+	OltID         uint32
 	IntfID        uint32
 	OperState     string
 	SerialNumber  *openolt.SerialNumber
@@ -52,6 +55,7 @@ func NewOnus(oltid uint32, intfid uint32, nonus uint32, nnni uint32) []*Onu {
 		*onu.InternalState = ONU_PRE_ACTIVATED
 		onu.mu = &sync.Mutex{}
 		onu.IntfID = intfid
+		onu.OltID = oltid
 		onu.OperState = "up"
 		onu.SerialNumber = new(openolt.SerialNumber)
 		onu.SerialNumber.VendorId = []byte("BBSM")
@@ -82,9 +86,12 @@ func ValidateSN(sn1 openolt.SerialNumber, sn2 openolt.SerialNumber) bool {
 }
 
 func UpdateOnusOpStatus(ponif uint32, onus []*Onu, opstatus string) {
-	for i, onu := range onus {
+	for _, onu := range onus {
 		onu.OperState = "up"
-		logger.Info("(PONIF:%d) ONU [%d] discovered.\n", ponif, i)
+		logger.WithFields(log.Fields{
+			"onu":           onu.SerialNumber,
+			"pon_interface": ponif,
+		}).Info("ONU discovered.")
 	}
 }
 

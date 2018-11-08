@@ -14,6 +14,7 @@
 
 BBSIM_DEPS  = $(wildcard ./*.go)
 DOCKERTAG  ?= "latest"
+REGISTRY ?= ""
 
 .PHONY: dep test clean docker
 
@@ -47,4 +48,4 @@ clean:
 	rm -f bbsim openolt/openolt.pb.go
 
 docker:
-	docker build -t voltha/voltha-bbsim:${DOCKERTAG} .
+	docker build -t ${REGISTRY}voltha/voltha-bbsim:${DOCKERTAG} .

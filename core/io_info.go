@@ -18,9 +18,11 @@ package core
 
 import (
 	"errors"
-	"gerrit.opencord.org/voltha-bbsim/common"
-	"github.com/google/gopacket/pcap"
 	"os/exec"
+
+	"gerrit.opencord.org/voltha-bbsim/common/logger"
+	"github.com/google/gopacket/pcap"
+	log "github.com/sirupsen/logrus"
 )
 
 type Ioinfo struct {
@@ -39,7 +41,7 @@ func (s *Server) identifyUniIoinfo(ioloc string, intfid uint32, onuid uint32) (*
 		}
 	}
 	err := errors.New("No matched Ioinfo is found")
-	logger.Error("%s", err)
+	logger.Error(err)
 	return nil, err
 }
 
@@ -50,7 +52,7 @@ func (s *Server) IdentifyNniIoinfo(ioloc string) (*Ioinfo, error) {
 		}
 	}
 	err := errors.New("No matched Ioinfo is found")
-	logger.Error("%s", err)
+	logger.Error(err)
 	return nil, err
 }
 
@@ -63,39 +65,42 @@ func (s *Server) GetUniIoinfos(ioloc string) ([]*Ioinfo, error) {
 	}
 	if len(ioinfos) == 0 {
 		err := errors.New("No matched Ioinfo is found")
-		logger.Error("%s", err)
+		logger.Error(err)
 		return nil, err
 	}
 	return ioinfos, nil
 }
 
-func CreateVethPairs(name1 string, name2 string) (err error) {
-	err = exec.Command("ip", "link", "add", name1, "type", "veth", "peer", "name", name2).Run()
+func CreateVethPairs(veth1 string, veth2 string) (err error) {
+	err = exec.Command("ip", "link", "add", veth1, "type", "veth", "peer", "name", veth2).Run()
 	if err != nil {
-		logger.Error("Fail to createVeth() for %s and %s veth creation error: %s\n", name1, name2, err.Error())
+		logger.WithFields(log.Fields{
+			"veth1": veth1,
+			"veth2": veth2,
+		}).Error("Fail to createVethPair()", err.Error())
 		return
 	}
-	logger.Info("%s & %s was created.", name1, name2)
-	err = exec.Command("ip", "link", "set", name1, "up").Run()
+	logger.Info("%s & %s was created.", veth1, veth2)
+	err = exec.Command("ip", "link", "set", veth1, "up").Run()
 	if err != nil {
 		logger.Error("Fail to createVeth() veth1 up", err)
 		return
 	}
-	err = exec.Command("ip", "link", "set", name2, "up").Run()
+	err = exec.Command("ip", "link", "set", veth2, "up").Run()
 	if err != nil {
 		logger.Error("Fail to createVeth() veth2 up", err)
 		return
 	}
-	logger.Info("%s & %s was up.", name1, name2)
+	logger.Info("%s & %s was up.", veth1, veth2)
 	return
 }
 
 func RemoveVeth(name string) error {
 	err := exec.Command("ip", "link", "del", name).Run()
 	if err != nil {
-		logger.Error("Fail to removeVeth()", err)
+		logger.WithField("veth", name).Error("Fail to removeVeth()", err)
 	}
-	logger.Info("%s was removed.", name)
+	logger.WithField("veth", name).Info("Veth was removed.")
 	return err
 }
 
@@ -103,6 +108,6 @@ func RemoveVeths(names []string) {
 	for _, name := range names {
 		RemoveVeth(name)
 	}
-	logger.Info("RemoveVeths() :%s\n", names)
+	logger.WithField("veths", names).Info("RemoveVeths(): ")
 	return
 }
