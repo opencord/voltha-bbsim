@@ -18,7 +18,13 @@ REGISTRY ?= ""
 
 .PHONY: dep test clean docker
 
-bbsim: protos/openolt.pb.go dep
+prereq:
+	go get -u google.golang.org/grpc
+	go get -v github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway
+	go get -v github.com/golang/protobuf/protoc-gen-go
+	go get -v github.com/google/gopacket
+
+bbsim: prereq protos/openolt.pb.go dep
 	go build -i -v -o $@
 
 dep: protos/openolt.pb.go
