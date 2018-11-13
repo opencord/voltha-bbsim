@@ -92,7 +92,7 @@ func NewCore(opt *option) *Server {
 		Vethnames:    []string{},
 		IndInterval:  opt.intvl,
 		Processes:    []string{},
-		EnableServer: new(openolt.Openolt_EnableIndicationServer),
+		EnableServer: nil,
 		state:        INACTIVE,
 		stateChan:    make(chan coreState, 8),
 	}

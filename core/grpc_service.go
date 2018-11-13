@@ -60,7 +60,7 @@ func (s *Server) GetDeviceInfo(c context.Context, empty *openolt.Empty) (*openol
 	devinfo.HardwareVersion = ""
 	devinfo.FirmwareVersion = ""
 	devinfo.Technology = "xgspon"
-	devinfo.PonPorts = 1
+	devinfo.PonPorts = 16
 	devinfo.OnuIdStart = 1
 	devinfo.OnuIdEnd = 255
 	devinfo.AllocIdStart = 1024
@@ -69,46 +69,6 @@ func (s *Server) GetDeviceInfo(c context.Context, empty *openolt.Empty) (*openol
 	devinfo.GemportIdEnd = 65535
 	devinfo.FlowIdStart = 1
 	devinfo.FlowIdEnd = 16383
-
-	/*
-	    for intf_id := 0; intf_id < 16; intf_id++ {
-	       r := new(openolt.DeviceInfo_DeviceResourceRanges)
-
-	       r.IntfIds = append(r.IntfIds, uint32(intf_id))
-
-	       r.Technology = "xgspon"
-
-	       p := new(openolt.DeviceInfo_DeviceResourceRanges_Pool)
-	       p.Type = openolt.DeviceInfo_DeviceResourceRanges_Pool_ONU_ID
-	       p.Sharing = openolt.DeviceInfo_DeviceResourceRanges_Pool_DEDICATED_PER_INTF
-	       p.Start = 1
-	       p.End = 255
-	       r.Pools = append(r.Pools, p)
-
-	       p = new(openolt.DeviceInfo_DeviceResourceRanges_Pool)
-	       p.Type = openolt.DeviceInfo_DeviceResourceRanges_Pool_ALLOC_ID
-	       p.Sharing = openolt.DeviceInfo_DeviceResourceRanges_Pool_SHARED_BY_ALL_INTF_SAME_TECH
-	       p.Start = 1024
-	       p.End = 16383
-	       r.Pools = append(r.Pools, p)
-
-	       p = new(openolt.DeviceInfo_DeviceResourceRanges_Pool)
-	       p.Type = openolt.DeviceInfo_DeviceResourceRanges_Pool_GEMPORT_ID
-	       p.Sharing = openolt.DeviceInfo_DeviceResourceRanges_Pool_SHARED_BY_ALL_INTF_ALL_TECH
-	       p.Start = 1024
-	       p.End = 65535
-	       r.Pools = append(r.Pools, p)
-
-	       p = new(openolt.DeviceInfo_DeviceResourceRanges_Pool)
-	       p.Type = openolt.DeviceInfo_DeviceResourceRanges_Pool_FLOW_ID
-	       p.Sharing = openolt.DeviceInfo_DeviceResourceRanges_Pool_SHARED_BY_ALL_INTF_ALL_TECH
-	       p.Start = 1
-	       p.End = 16383
-	       r.Pools = append(r.Pools, p)
-
-	       devinfo.Ranges = append(devinfo.Ranges, r)
-	   }
-	*/
 
 	return devinfo, nil
 }
