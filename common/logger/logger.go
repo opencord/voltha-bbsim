@@ -30,7 +30,7 @@ var (
 func Setup(kafkaBroker string, level string) {
 
 	logger := log.New()
-	logger.SetReportCaller(true)
+	//logger.SetReportCaller(true)
 	myLogger = logger.WithField("topics", []string{"bbsim.log"})
 
 	// TODO make this configurable via cli arg

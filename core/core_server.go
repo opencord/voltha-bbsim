@@ -41,6 +41,12 @@ const (
 	MAX_ONUS_PER_PON = 64 // This value should be the same with the value in AdapterPlatrorm class
 )
 
+type OmciIndication struct {
+	IntfId uint32
+	OnuId  uint32
+	Pkt    []byte
+}
+
 type Server struct {
 	wg           *sync.WaitGroup
 	Olt          *device.Olt
@@ -57,6 +63,7 @@ type Server struct {
 	cancel       context.CancelFunc
 	state        coreState
 	stateChan    chan coreState
+	omciChan     chan OmciIndication
 }
 
 type Packet struct {
@@ -95,6 +102,7 @@ func NewCore(opt *option) *Server {
 		EnableServer: nil,
 		state:        INACTIVE,
 		stateChan:    make(chan coreState, 8),
+		omciChan:     make(chan OmciIndication, 8),
 	}
 
 	nnni := s.Olt.NumNniIntf
@@ -347,6 +355,13 @@ func (s *Server) runPacketInDaemon(ctx context.Context, stream openolt.Openolt_E
 	s.updateState(ACTIVE)
 	for {
 		select {
+		case msg := <-s.omciChan:
+			logger.Debug("OLT %d send omci indication, IF %v (ONU-ID: %v) pkt:%x.", s.Olt.ID, msg.IntfId, msg.OnuId, msg.Pkt)
+			omci := &openolt.Indication_OmciInd{OmciInd: &openolt.OmciIndication{IntfId: msg.IntfId, OnuId: msg.OnuId, Pkt: msg.Pkt}}
+			if err := stream.Send(&openolt.Indication{Data: omci}); err != nil {
+				logger.Error("send omci indication failed.", err)
+				continue
+			}
 		case unipkt := <-unichannel:
 			logger.Debug("Received packet in grpc Server from UNI.")
 			if unipkt.Info == nil || unipkt.Info.iotype != "uni" {
