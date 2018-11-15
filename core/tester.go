@@ -307,15 +307,15 @@ func activateWPASupplicant(univeth UniVeth, s *Server) (err error) {
 
 func activateDHCPClient(univeth UniVeth, s *Server) (err error) {
 	onu, _ := s.GetOnuByID(univeth.OnuId)
-	utils.LoggerWithOnu(onu).WithFields(log.Fields{
-		"veth": univeth.Veth,
-	}).Info("activateDHCPClient() start for: %s", univeth)
+
 	cmd := exec.Command("/usr/local/bin/dhclient", univeth.Veth)
 	if err := cmd.Start(); err != nil {
-		logger.Error("Fail to activateDHCPClient() for: %s", univeth)
+		logger.Error("Fail to activateDHCPClient() for: %s", univeth.Veth)
 		logger.Panic("activateDHCPClient %s", err)
 	}
-	logger.Debug("activateDHCPClient() done for: %s", univeth)
+	utils.LoggerWithOnu(onu).WithFields(log.Fields{
+		"veth": univeth.Veth,
+	}).Infof("activateDHCPClient() start for: %s", univeth.Veth)
 	return
 }
 

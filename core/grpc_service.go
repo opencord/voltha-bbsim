@@ -111,7 +111,7 @@ func (s *Server) OmciMsgOut(c context.Context, msg *openolt.OmciMsg) (*openolt.E
 
 func (s *Server) OnuPacketOut(c context.Context, packet *openolt.OnuPacket) (*openolt.Empty, error) {
 	onu, _ := s.GetOnuByID(packet.OnuId)
-	utils.LoggerWithOnu(onu).Debug("OLT %d receives OnuPacketOut () to IF-ID:%d ONU-ID %d.", s.Olt.ID, packet.IntfId, packet.OnuId)
+	utils.LoggerWithOnu(onu).Debugf("OLT %d receives OnuPacketOut () to IF-ID:%d ONU-ID %d.", s.Olt.ID, packet.IntfId, packet.OnuId)
 	onuid := packet.OnuId
 	intfid := packet.IntfId
 	rawpkt := gopacket.NewPacket(packet.Pkt, layers.LayerTypeEthernet, gopacket.Default)

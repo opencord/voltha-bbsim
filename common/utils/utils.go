@@ -38,7 +38,7 @@ func LoggerWithOnu(onu *device.Onu) *log.Entry {
 		return logger.GetLogger()
 	}
 
-	return logger.WithFields(log.Fields{
+	return logger.GetLogger().WithFields(log.Fields{
 		"serial_number": OnuToSn(onu),
 		"interfaceId":   onu.IntfID,
 		"onuId":         onu.OnuID,

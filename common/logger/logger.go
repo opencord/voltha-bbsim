@@ -17,8 +17,6 @@
 package logger
 
 import (
-	"fmt"
-
 	lkh "github.com/gfremex/logrus-kafka-hook"
 	log "github.com/sirupsen/logrus"
 )
@@ -77,25 +75,25 @@ func WithFields(fields log.Fields) *log.Entry {
 }
 
 func Panic(msg string, args ...interface{}) {
-	myLogger.Panic(fmt.Sprintf(msg, args...))
+	myLogger.Panicf(msg, args...)
 }
 
 func Fatal(msg string, args ...interface{}) {
-	myLogger.Fatal(fmt.Sprintf(msg, args...))
+	myLogger.Fatalf(msg, args...)
 }
 
 func Error(msg string, args ...interface{}) {
-	myLogger.Error(fmt.Sprintf(msg, args...))
+	myLogger.Errorf(msg, args...)
 }
 
 func Warn(msg string, args ...interface{}) {
-	myLogger.Warn(fmt.Sprintf(msg, args...))
+	myLogger.Warnf(msg, args...)
 }
 
 func Info(msg string, args ...interface{}) {
-	myLogger.Info(fmt.Sprintf(msg, args...))
+	myLogger.Infof(msg, args...)
 }
 
 func Debug(msg string, args ...interface{}) {
-	myLogger.Debug(fmt.Sprintf(msg, args...))
+	myLogger.Debugf(msg, args...)
 }

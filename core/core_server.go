@@ -359,7 +359,7 @@ func (s *Server) runPacketInDaemon(ctx context.Context, stream openolt.Openolt_E
 				continue
 			}
 		case unipkt := <-unichannel:
-			logger.Debug("Received packet in grpc Server from UNI.")
+			logger.Debug("Received packet from UNI in grpc Server")
 			if unipkt.Info == nil || unipkt.Info.iotype != "uni" {
 				logger.Debug("WARNING: This packet does not come from UNI ")
 				continue
@@ -401,6 +401,9 @@ func (s *Server) runPacketInDaemon(ctx context.Context, stream openolt.Openolt_E
 					}).Error("Could not find onuid in CtagMap", onuid, sn, s.CtagMap)
 				}
 			} else {
+				utils.LoggerWithOnu(onu).WithFields(log.Fields{
+					"gemId": gemid,
+				}).Info("Received upstream packet is of unknow type, skipping.")
 				continue
 			}
 
@@ -417,9 +420,9 @@ func (s *Server) runPacketInDaemon(ctx context.Context, stream openolt.Openolt_E
 				continue
 			}
 			onuid := nnipkt.Info.onuid
-			onu, _ := getOnuByID(s.Onumap, onuid)
+			onu, _ := s.GetOnuByID(onuid)
 
-			utils.LoggerWithOnu(onu).Info("Received packet in grpc Server from NNI.")
+			utils.LoggerWithOnu(onu).Info("Received packet from NNI in grpc Server.")
 			intfid := nnipkt.Info.intfid
 			pkt := nnipkt.Pkt
 			utils.LoggerWithOnu(onu).Info("sendPktInd - NNI Packet")
