@@ -41,12 +41,6 @@ const (
 	MAX_ONUS_PER_PON = 64 // This value should be the same with the value in AdapterPlatrorm class
 )
 
-type OmciIndication struct {
-	IntfId uint32
-	OnuId  uint32
-	Pkt    []byte
-}
-
 type Server struct {
 	wg           *sync.WaitGroup
 	Olt          *device.Olt
@@ -63,7 +57,8 @@ type Server struct {
 	cancel       context.CancelFunc
 	state        coreState
 	stateChan    chan coreState
-	omciChan     chan OmciIndication
+	omciIn       chan OmciMsg
+	omciOut      chan OmciMsg
 }
 
 type Packet struct {
@@ -85,7 +80,7 @@ INACTIVE -> PRE_ACTIVE -> ACTIVE
        <-              <-
 */
 
-func NewCore(opt *option) *Server {
+func NewCore(opt *option, omciOut chan OmciMsg, omciIn chan OmciMsg) *Server {
 	// TODO: make it decent
 	oltid := opt.oltid
 	npon := opt.npon
@@ -102,7 +97,8 @@ func NewCore(opt *option) *Server {
 		EnableServer: nil,
 		state:        INACTIVE,
 		stateChan:    make(chan coreState, 8),
-		omciChan:     make(chan OmciIndication, 8),
+		omciIn:       omciIn,
+		omciOut:      omciOut,
 	}
 
 	nnni := s.Olt.NumNniIntf
@@ -355,7 +351,7 @@ func (s *Server) runPacketInDaemon(ctx context.Context, stream openolt.Openolt_E
 	s.updateState(ACTIVE)
 	for {
 		select {
-		case msg := <-s.omciChan:
+		case msg := <-s.omciIn:
 			logger.Debug("OLT %d send omci indication, IF %v (ONU-ID: %v) pkt:%x.", s.Olt.ID, msg.IntfId, msg.OnuId, msg.Pkt)
 			omci := &openolt.Indication_OmciInd{OmciInd: &openolt.OmciIndication{IntfId: msg.IntfId, OnuId: msg.OnuId, Pkt: msg.Pkt}}
 			if err := stream.Send(&openolt.Indication{Data: omci}); err != nil {

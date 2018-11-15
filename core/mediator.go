@@ -125,7 +125,10 @@ func NewMediator(o *option) *mediator {
 func (m *mediator) Start() {
 	var wg sync.WaitGroup
 	opt := m.opt
-	server := NewCore(opt)
+	omciOut := make(chan OmciMsg, 8)
+	omciIn := make(chan OmciMsg, 8)
+	go OmciRun(omciOut, omciIn)
+	server := NewCore(opt, omciOut, omciIn)
 	wg.Add(1)
 	go func() {
 		if err := server.Start(); err != nil { //Blocking
