@@ -160,11 +160,13 @@ func setupVethHandler(inveth string, outveth string, vethnames []string) (*pcap.
 	err1 := CreateVethPairs(inveth, outveth)
 	vethnames = append(vethnames, inveth)
 	if err1 != nil {
+		logger.Error("setupVethHandler failed", err1)
 		RemoveVeths(vethnames)
 		return nil, vethnames, err1
 	}
 	handler, err2 := getVethHandler(inveth)
 	if err2 != nil {
+		logger.Error("getVethHandler failed", err2)
 		RemoveVeths(vethnames)
 		return nil, vethnames, err2
 	}

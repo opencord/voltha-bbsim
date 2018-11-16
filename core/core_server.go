@@ -265,6 +265,7 @@ func (s *Server) StartPktInDaemon(ctx context.Context, stream openolt.Openolt_En
 	s.wg.Add(1)
 	ioinfos, veths, err := createIoinfos(s.Olt.ID, s.Vethnames, s.Onumap)
 	if err != nil {
+		logger.Error("createIoinfos failed.", err)
 		return err
 	}
 	s.Ioinfos = ioinfos
@@ -276,6 +277,7 @@ func (s *Server) StartPktInDaemon(ctx context.Context, stream openolt.Openolt_En
 	s.cancel = cancel
 
 	if err = s.runPacketInDaemon(child, stream); err != nil {
+		logger.Error("runPacketInDaemon failed.", err)
 		return err
 	}
 	return nil
@@ -298,6 +300,7 @@ func createIoinfos(oltid uint32, Vethnames []string, onumap map[uint32][]*device
 			onuid := onumap[intfid][i].OnuID
 			uniup, unidw := makeUniName(oltid, intfid, onuid)
 			if handler, Vethnames, err = setupVethHandler(uniup, unidw, Vethnames); err != nil {
+				logger.Error("setupVethHandler failed (onuid: %d)", onuid, err)
 				return ioinfos, Vethnames, err
 			}
 			iinfo := Ioinfo{Name: uniup, iotype: "uni", ioloc: "inside", intfid: intfid, onuid: onuid, handler: handler}
@@ -310,6 +313,7 @@ func createIoinfos(oltid uint32, Vethnames []string, onumap map[uint32][]*device
 	var handler *pcap.Handle
 	nniup, nnidw := makeNniName(oltid)
 	if handler, Vethnames, err = setupVethHandler(nniup, nnidw, Vethnames); err != nil {
+		logger.Error("setupVethHandler failed for nni", err)
 		return ioinfos, Vethnames, err
 	}
 
