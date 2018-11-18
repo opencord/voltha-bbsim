@@ -105,6 +105,7 @@ func (s *Server) OmciMsgOut(c context.Context, msg *openolt.OmciMsg) (*openolt.E
 	resp.IntfId = msg.IntfId
 	resp.OnuId = msg.OnuId
 	resp.Pkt = make([]byte, len(msg.Pkt))
+	copy(resp.Pkt, msg.Pkt)
 	s.omciOut <- resp
 	return new(openolt.Empty), nil
 }
