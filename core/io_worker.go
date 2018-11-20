@@ -22,7 +22,10 @@ import (
 	"strconv"
 	"time"
 
+	"gerrit.opencord.org/voltha-bbsim/device"
+
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
+	"gerrit.opencord.org/voltha-bbsim/common/utils"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
@@ -41,12 +44,12 @@ func RecvWorker(io *Ioinfo, handler *pcap.Handle, r chan Packet) {
 	}
 }
 
-func SendUni(handle *pcap.Handle, packet gopacket.Packet) {
+func SendUni(handle *pcap.Handle, packet gopacket.Packet, onu *device.Onu) {
 	err := handle.WritePacketData(packet.Data())
 	if err != nil {
-		logger.Error("Error in send packet to UNI-IF: %v e:%s", *handle, err)
+		utils.LoggerWithOnu(onu).Error("Error in send packet to UNI-IF: %v e:%s", *handle, err)
 	}
-	logger.Debug("Successfully send packet to UNI-IF: %v ", *handle)
+	utils.LoggerWithOnu(onu).Debug("Successfully send packet to UNI-IF: %v ", *handle)
 	//logger.Println(packet.Dump())
 }
 
@@ -86,7 +89,7 @@ func PopVLAN(pkt gopacket.Packet) (gopacket.Packet, uint16, error) {
 	//return nil, 0, errors.New("failed to pop vlan")
 }
 
-func PushVLAN(pkt gopacket.Packet, vid uint16) (gopacket.Packet, error) {
+func PushVLAN(pkt gopacket.Packet, vid uint16, onu *device.Onu) (gopacket.Packet, error) {
 	if eth := getEthernetLayer(pkt); eth != nil {
 		ethernetLayer := &layers.Ethernet{
 			SrcMAC:       eth.SrcMAC,
@@ -113,7 +116,7 @@ func PushVLAN(pkt gopacket.Packet, vid uint16) (gopacket.Packet, error) {
 			layers.LayerTypeEthernet,
 			gopacket.Default,
 		)
-		logger.Debug("Push the 802.1Q header (VID: %d)", vid)
+		utils.LoggerWithOnu(onu).Debugf("Push the 802.1Q header (VID: %d)", vid)
 		return ret, nil
 	}
 	return nil, errors.New("failed to push vlan")
