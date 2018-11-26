@@ -70,7 +70,8 @@ func OmciRun(omciOut chan OmciMsg, omciIn chan OmciMsg) {
 		case 9:
 			resp.Pkt = Get()
 		default:
-			logger.Debug("Omci msg type not handled: %d", msgType)
+			logger.Warn("Omci msg type not handled: %d", msgType)
+			continue
 		}
 
 		resp.Pkt[0] = byte(transactionId >> 8)
