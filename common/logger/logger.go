@@ -44,7 +44,7 @@ func Setup(kafkaBroker string, level string) {
 			&log.JSONFormatter{
 				FieldMap: log.FieldMap{
 					log.FieldKeyTime:  "@timestamp",
-					log.FieldKeyLevel: "level",
+					log.FieldKeyLevel: "levelname",
 					log.FieldKeyMsg:   "message",
 				},
 			},
