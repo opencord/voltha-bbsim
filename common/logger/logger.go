@@ -19,6 +19,7 @@ package logger
 import (
 	lkh "github.com/gfremex/logrus-kafka-hook"
 	log "github.com/sirupsen/logrus"
+	"time"
 )
 
 var (
@@ -42,6 +43,7 @@ func Setup(kafkaBroker string, level string) {
 			"kh",
 			[]log.Level{log.DebugLevel, log.InfoLevel, log.WarnLevel, log.ErrorLevel},
 			&log.JSONFormatter{
+				TimestampFormat: time.RFC3339Nano,
 				FieldMap: log.FieldMap{
 					log.FieldKeyTime:  "@timestamp",
 					log.FieldKeyLevel: "levelname",
