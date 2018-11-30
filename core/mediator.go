@@ -26,6 +26,7 @@ import (
 	"sync"
 
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
+	"gerrit.opencord.org/voltha-bbsim/protos"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -125,8 +126,8 @@ func NewMediator(o *option) *mediator {
 func (m *mediator) Start() {
 	var wg sync.WaitGroup
 	opt := m.opt
-	omciOut := make(chan OmciMsg, 8)
-	omciIn := make(chan OmciMsg, 8)
+	omciOut := make(chan openolt.OmciMsg, 1024)
+	omciIn := make(chan openolt.OmciIndication, 1024)
 	go OmciRun(omciOut, omciIn)
 	server := NewCore(opt, omciOut, omciIn)
 	wg.Add(1)

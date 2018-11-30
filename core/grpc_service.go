@@ -100,13 +100,8 @@ func (s *Server) DeleteOnu(c context.Context, onu *openolt.Onu) (*openolt.Empty,
 }
 
 func (s *Server) OmciMsgOut(c context.Context, msg *openolt.OmciMsg) (*openolt.Empty, error) {
-	var resp OmciMsg
 	logger.Debug("OLT %d receives OmciMsgOut to IF %v (ONU-ID: %v) pkt:%x.", s.Olt.ID, msg.IntfId, msg.OnuId, msg.Pkt)
-	resp.IntfId = msg.IntfId
-	resp.OnuId = msg.OnuId
-	resp.Pkt = make([]byte, len(msg.Pkt))
-	copy(resp.Pkt, msg.Pkt)
-	s.omciOut <- resp
+	s.omciOut <- *msg
 	return new(openolt.Empty), nil
 }
 

@@ -57,8 +57,8 @@ type Server struct {
 	cancel       context.CancelFunc
 	state        coreState
 	stateChan    chan coreState
-	omciIn       chan OmciMsg
-	omciOut      chan OmciMsg
+	omciIn       chan openolt.OmciIndication
+	omciOut      chan openolt.OmciMsg
 }
 
 type Packet struct {
@@ -80,7 +80,7 @@ INACTIVE -> PRE_ACTIVE -> ACTIVE
        <-              <-
 */
 
-func NewCore(opt *option, omciOut chan OmciMsg, omciIn chan OmciMsg) *Server {
+func NewCore(opt *option, omciOut chan openolt.OmciMsg, omciIn chan openolt.OmciIndication) *Server {
 	// TODO: make it decent
 	oltid := opt.oltid
 	npon := opt.npon
@@ -357,7 +357,7 @@ func (s *Server) runPacketInDaemon(ctx context.Context, stream openolt.Openolt_E
 		select {
 		case msg := <-s.omciIn:
 			logger.Debug("OLT %d send omci indication, IF %v (ONU-ID: %v) pkt:%x.", s.Olt.ID, msg.IntfId, msg.OnuId, msg.Pkt)
-			omci := &openolt.Indication_OmciInd{OmciInd: &openolt.OmciIndication{IntfId: msg.IntfId, OnuId: msg.OnuId, Pkt: msg.Pkt}}
+			omci := &openolt.Indication_OmciInd{OmciInd: &msg}
 			if err := stream.Send(&openolt.Indication{Data: omci}); err != nil {
 				logger.Error("send omci indication failed.", err)
 				continue
@@ -504,9 +504,15 @@ func IsAllOnuActive(onumap map[uint32][]*device.Onu) bool {
 }
 
 func getGemPortID(intfid uint32, onuid uint32) (uint32, error) {
-	idx := uint32(0)
-	return 1024 + (((MAX_ONUS_PER_PON*intfid + onuid - 1) * 7) + idx), nil
-	//return uint32(1032 + 8 * (vid - 1)), nil
+	key := OnuKey{intfid, onuid}
+	if onuState, ok := Onus[key]; !ok {
+		idx := uint32(0)
+		// Backwards compatible with bbsim_olt adapter
+		return 1024 + (((MAX_ONUS_PER_PON*intfid + onuid - 1) * 7) + idx), nil
+	} else {
+		// FIXME - Gem Port ID is 2 bytes - fix openolt.proto
+		return uint32(onuState.gemPortId), nil
+	}
 }
 
 func getOnuBySN(onumap map[uint32][]*device.Onu, sn *openolt.SerialNumber) (*device.Onu, error) {
