@@ -96,6 +96,18 @@ type OnuState struct {
 	pptpInstance uint8
 }
 
+type OmciMsgHandler func(class OmciClass, content OmciContent, key OnuKey) []byte
+
+var Handlers = map[OmciMsgType]OmciMsgHandler{
+	MibReset:      mibReset,
+	MibUpload:     mibUpload,
+	MibUploadNext: mibUploadNext,
+	Set:           set,
+	Create:        create,
+	Get:           get,
+	GetAllAlarms:  getAllAlarms,
+}
+
 var Onus = map[OnuKey]*OnuState{}
 
 func OmciRun(omciOut chan openolt.OmciMsg, omciIn chan openolt.OmciIndication) {
@@ -114,25 +126,13 @@ func OmciRun(omciOut chan openolt.OmciMsg, omciIn chan openolt.OmciIndication) {
 		if _, ok := Onus[key]; !ok {
 			Onus[key] = NewOnuState()
 		}
-		switch msgType {
-		case MibReset:
-			resp.Pkt = mibReset()
-		case 13:
-			resp.Pkt = mibUpload()
-		case 14:
-			resp.Pkt = mibUploadNext(Onus[key])
-		case 8:
-			resp.Pkt = set()
-		case 4:
-			resp.Pkt = create(class, content, key)
-		case 9:
-			resp.Pkt = get()
-		case 11:
-			resp.Pkt = getAllAlarms()
-		default:
-			logger.Warn("Omci msg type not handled: %d", msgType)
+
+		if _, ok := Handlers[msgType]; !ok {
+			logger.Warn("Ignore omci msg (msgType %d not handled)", msgType)
 			continue
 		}
+
+		resp.Pkt = Handlers[msgType](class, content, key)
 
 		resp.Pkt[0] = byte(transactionId >> 8)
 		resp.Pkt[1] = byte(transactionId & 0xFF)
@@ -177,7 +177,7 @@ func NewOnuState() *OnuState {
 	return &OnuState{gemPortId: 0, mibUploadCtr: 0, uniGInstance: 1, pptpInstance: 1}
 }
 
-func mibReset() []byte {
+func mibReset(class OmciClass, content OmciContent, key OnuKey) []byte {
 	var pkt []byte
 
 	logger.Debug("Omci MibReset")
@@ -192,7 +192,7 @@ func mibReset() []byte {
 	return pkt
 }
 
-func mibUpload() []byte {
+func mibUpload(class OmciClass, content OmciContent, key OnuKey) []byte {
 	var pkt []byte
 
 	logger.Debug("Omci MibUpload")
@@ -210,10 +210,12 @@ func mibUpload() []byte {
 	return pkt
 }
 
-func mibUploadNext(state *OnuState) []byte {
+func mibUploadNext(class OmciClass, content OmciContent, key OnuKey) []byte {
 	var pkt []byte
 
 	logger.Debug("Omci MibUploadNext")
+
+	state := Onus[key]
 
 	switch state.mibUploadCtr {
 	case 0:
@@ -255,7 +257,7 @@ func mibUploadNext(state *OnuState) []byte {
 	return pkt
 }
 
-func set() []byte {
+func set(class OmciClass, content OmciContent, key OnuKey) []byte {
 	var pkt []byte
 
 	pkt = []byte{
@@ -296,7 +298,7 @@ func create(class OmciClass, content OmciContent, key OnuKey) []byte {
 	return pkt
 }
 
-func get() []byte {
+func get(class OmciClass, content OmciContent, key OnuKey) []byte {
 	var pkt []byte
 
 	pkt = []byte{
@@ -312,7 +314,7 @@ func get() []byte {
 	return pkt
 }
 
-func getAllAlarms() []byte {
+func getAllAlarms(class OmciClass, content OmciContent, key OnuKey) []byte {
 	var pkt []byte
 
 	pkt = []byte{
