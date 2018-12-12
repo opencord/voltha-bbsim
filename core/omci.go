@@ -22,6 +22,8 @@ import (
 
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
 	"gerrit.opencord.org/voltha-bbsim/protos"
+	"gerrit.opencord.org/voltha-bbsim/device"
+	"time"
 )
 
 //
@@ -89,12 +91,20 @@ type OnuKey struct {
 	IntfId, OnuId uint32
 }
 
-type OnuState struct {
+type OnuOmciState struct {
 	gemPortId    uint16
 	mibUploadCtr uint16
 	uniGInstance uint8
 	pptpInstance uint8
+	init  istate
 }
+
+type istate int
+
+const (
+	INCOMPLETE istate = iota
+	DONE
+)
 
 type OmciMsgHandler func(class OmciClass, content OmciContent, key OnuKey) []byte
 
@@ -108,40 +118,52 @@ var Handlers = map[OmciMsgType]OmciMsgHandler{
 	GetAllAlarms:  getAllAlarms,
 }
 
-var Onus = map[OnuKey]*OnuState{}
+var OnuOmciStateMap = map[OnuKey]*OnuOmciState{}
 
-func OmciRun(omciOut chan openolt.OmciMsg, omciIn chan openolt.OmciIndication) {
-
-	for {
-		var resp openolt.OmciIndication
-
-		m := <-omciOut
-
-		transactionId, deviceId, msgType, class, instance, content := ParsePkt(m.Pkt)
-
-		logger.Debug("OmciRun - transactionId: %d msgType: %d, ME Class: %d, ME Instance: %d",
-			transactionId, msgType, class, instance)
-
-		key := OnuKey{m.IntfId, m.OnuId}
-		if _, ok := Onus[key]; !ok {
-			Onus[key] = NewOnuState()
+func OmciRun(omciOut chan openolt.OmciMsg, omciIn chan openolt.OmciIndication, onumap map[uint32][] *device.Onu, errch chan error) {
+	go func() { //For monitoring the OMCI states
+		for {
+			time.Sleep(1 * time.Second)
+			if isAllOmciInitDone(onumap) {
+				logger.Info("OmciRun - All the omci init process were done")
+				close(errch)
+				break
+			}
 		}
+	}()
 
-		if _, ok := Handlers[msgType]; !ok {
-			logger.Warn("Ignore omci msg (msgType %d not handled)", msgType)
-			continue
+	go func(){
+		for {
+			var resp openolt.OmciIndication
+
+			m := <-omciOut
+
+			transactionId, deviceId, msgType, class, instance, content := ParsePkt(m.Pkt)
+
+			logger.Debug("OmciRun - transactionId: %d msgType: %d, ME Class: %d, ME Instance: %d",
+				transactionId, msgType, class, instance)
+
+			key := OnuKey{m.IntfId, m.OnuId}
+			if _, ok := OnuOmciStateMap[key]; !ok {
+				OnuOmciStateMap[key] = NewOnuOmciState()
+			}
+
+			if _, ok := Handlers[msgType]; !ok {
+				logger.Warn("Ignore omci msg (msgType %d not handled)", msgType)
+				continue
+			}
+
+			resp.Pkt = Handlers[msgType](class, content, key)
+
+			resp.Pkt[0] = byte(transactionId >> 8)
+			resp.Pkt[1] = byte(transactionId & 0xFF)
+			resp.Pkt[2] = 0x2<<4 | byte(msgType)
+			resp.Pkt[3] = deviceId
+			resp.IntfId = m.IntfId
+			resp.OnuId = m.OnuId
+			omciIn <- resp
 		}
-
-		resp.Pkt = Handlers[msgType](class, content, key)
-
-		resp.Pkt[0] = byte(transactionId >> 8)
-		resp.Pkt[1] = byte(transactionId & 0xFF)
-		resp.Pkt[2] = 0x2<<4 | byte(msgType)
-		resp.Pkt[3] = deviceId
-		resp.IntfId = m.IntfId
-		resp.OnuId = m.OnuId
-		omciIn <- resp
-	}
+	}()
 }
 
 func ParsePkt(pkt []byte) (uint16, uint8, OmciMsgType, OmciClass, uint16, OmciContent) {
@@ -154,7 +176,6 @@ func ParsePkt(pkt []byte) (uint16, uint8, OmciMsgType, OmciClass, uint16, OmciCo
 	}
 	logger.Debug("OmciRun - TransactionId: %d MessageType: %d, ME Class: %d, ME Instance: %d, Content: %x",
 		m.TransactionId, m.MessageType&0x0F, m.MessageId.Class, m.MessageId.Instance, m.Content)
-
 	return m.TransactionId, m.DeviceId, m.MessageType & 0x0F, m.MessageId.Class, m.MessageId.Instance, m.Content
 
 }
@@ -173,8 +194,8 @@ func HexDecode(pkt []byte) []byte {
 	return p
 }
 
-func NewOnuState() *OnuState {
-	return &OnuState{gemPortId: 0, mibUploadCtr: 0, uniGInstance: 1, pptpInstance: 1}
+func NewOnuOmciState() *OnuOmciState {
+	return &OnuOmciState{gemPortId: 0, mibUploadCtr: 0, uniGInstance: 1, pptpInstance: 1}
 }
 
 func mibReset(class OmciClass, content OmciContent, key OnuKey) []byte {
@@ -215,7 +236,7 @@ func mibUploadNext(class OmciClass, content OmciContent, key OnuKey) []byte {
 
 	logger.Debug("Omci MibUploadNext")
 
-	state := Onus[key]
+	state := OnuOmciStateMap[key]
 
 	switch state.mibUploadCtr {
 	case 0:
@@ -277,11 +298,12 @@ func create(class OmciClass, content OmciContent, key OnuKey) []byte {
 	var pkt []byte
 
 	if class == GEMPortNetworkCTP {
-		if onuState, ok := Onus[key]; !ok {
+		if onuOmciState, ok := OnuOmciStateMap[key]; !ok {
 			logger.Error("ONU Key Error - IntfId: %d, OnuId:", key.IntfId, key.OnuId)
 		} else {
-			onuState.gemPortId = binary.BigEndian.Uint16(content[:2])
-			logger.Debug("Gem Port Id %d", onuState.gemPortId)
+			onuOmciState.gemPortId = binary.BigEndian.Uint16(content[:2])
+			logger.Debug("Gem Port Id %d", onuOmciState.gemPortId)
+			OnuOmciStateMap[key].init = DONE
 		}
 	}
 
@@ -329,3 +351,17 @@ func getAllAlarms(class OmciClass, content OmciContent, key OnuKey) []byte {
 
 	return pkt
 }
+
+func isAllOmciInitDone(onumap map[uint32][] *device.Onu) bool {
+	for _, onus := range onumap {
+		for _, onu := range onus{
+			key := OnuKey{onu.IntfID, onu.OnuID}
+			state := OnuOmciStateMap[key]
+			if state.init == INCOMPLETE{
+				return false
+			}
+		}
+	}
+	return true
+}
+

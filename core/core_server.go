@@ -80,7 +80,7 @@ INACTIVE -> PRE_ACTIVE -> ACTIVE
        <-              <-
 */
 
-func NewCore(opt *option, omciOut chan openolt.OmciMsg, omciIn chan openolt.OmciIndication) *Server {
+func NewCore(opt *option) *Server {
 	// TODO: make it decent
 	oltid := opt.oltid
 	npon := opt.npon
@@ -97,8 +97,8 @@ func NewCore(opt *option, omciOut chan openolt.OmciMsg, omciIn chan openolt.Omci
 		EnableServer: nil,
 		state:        INACTIVE,
 		stateChan:    make(chan coreState, 8),
-		omciIn:       omciIn,
-		omciOut:      omciOut,
+		omciIn:       make(chan openolt.OmciIndication, 1024),
+		omciOut:      make(chan openolt.OmciMsg, 1024),
 	}
 
 	nnni := s.Olt.NumNniIntf
@@ -330,6 +330,16 @@ func (s *Server) runPacketInDaemon(ctx context.Context, stream openolt.Openolt_E
 	defer logger.Debug("runPacketInDaemon Done")
 	unichannel := make(chan Packet, 2048)
 
+
+	logger.Debug("runOMCIDaemon Start")
+	defer logger.Debug("runOMCIDaemon Done")
+	errch := make (chan error)
+	OmciRun(s.omciOut, s.omciIn, s.Onumap, errch)
+	go func(){
+		<-errch	// Wait for OmciInitialization
+		s.updateState(ACTIVE)
+	}()
+
 	for intfid, _ := range s.Onumap {
 		for _, onu := range s.Onumap[intfid] {
 			onuid := onu.OnuID
@@ -352,7 +362,6 @@ func (s *Server) runPacketInDaemon(ctx context.Context, stream openolt.Openolt_E
 	go RecvWorker(ioinfo, nhandler, nnichannel)
 
 	data := &openolt.Indication_PktInd{}
-	s.updateState(ACTIVE)
 	for {
 		select {
 		case msg := <-s.omciIn:
@@ -505,7 +514,7 @@ func IsAllOnuActive(onumap map[uint32][]*device.Onu) bool {
 
 func getGemPortID(intfid uint32, onuid uint32) (uint32, error) {
 	key := OnuKey{intfid, onuid}
-	if onuState, ok := Onus[key]; !ok {
+	if onuState, ok := OnuOmciStateMap[key]; !ok {
 		idx := uint32(0)
 		// Backwards compatible with bbsim_olt adapter
 		return 1024 + (((MAX_ONUS_PER_PON*intfid + onuid - 1) * 7) + idx), nil
