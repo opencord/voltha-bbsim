@@ -112,6 +112,7 @@ func (s *Server) OnuPacketOut(c context.Context, packet *openolt.OnuPacket) (*op
 	intfid := packet.IntfId
 	rawpkt := gopacket.NewPacket(packet.Pkt, layers.LayerTypeEthernet, gopacket.Default)
 	if err := s.onuPacketOut(intfid, onuid, rawpkt); err != nil {
+		utils.LoggerWithOnu(onu).WithField("error", err).Errorf("OnuPacketOut Error ")
 		return new(openolt.Empty), err
 	}
 	return new(openolt.Empty), nil

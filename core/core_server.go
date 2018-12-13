@@ -372,20 +372,20 @@ func (s *Server) runPacketInDaemon(ctx context.Context, stream openolt.Openolt_E
 				continue
 			}
 		case unipkt := <-unichannel:
-			logger.Debug("Received packet from UNI in grpc Server")
+			onuid := unipkt.Info.onuid
+			onu, _ := s.GetOnuByID(onuid)
+			utils.LoggerWithOnu(onu).Debug("Received packet from UNI in grpc Server")
 			if unipkt.Info == nil || unipkt.Info.iotype != "uni" {
 				logger.Debug("WARNING: This packet does not come from UNI ")
 				continue
 			}
 
 			intfid := unipkt.Info.intfid
-			onuid := unipkt.Info.onuid
 			gemid, _ := getGemPortID(intfid, onuid)
 			pkt := unipkt.Pkt
 			layerEth := pkt.Layer(layers.LayerTypeEthernet)
 			le, _ := layerEth.(*layers.Ethernet)
 			ethtype := le.EthernetType
-			onu, _ := s.GetOnuByID(onuid)
 
 			if ethtype == 0x888e {
 				utils.LoggerWithOnu(onu).WithFields(log.Fields{
@@ -399,7 +399,7 @@ func (s *Server) runPacketInDaemon(ctx context.Context, stream openolt.Openolt_E
 				//C-TAG
 				sn := convB2S(onu.SerialNumber.VendorSpecific)
 				if ctag, ok := s.CtagMap[sn]; ok == true {
-					tagpkt, err := PushVLAN(pkt, uint16(ctag))
+					tagpkt, err := PushVLAN(pkt, uint16(ctag), onu)
 					if err != nil {
 						utils.LoggerWithOnu(onu).WithFields(log.Fields{
 							"gemId": gemid,
@@ -467,10 +467,14 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 		if ethtype == 0x888e {
 			utils.LoggerWithOnu(onu).Info("Received downstream packet is EAPOL.")
 		} else if layerDHCP := rawpkt.Layer(layers.LayerTypeDHCPv4); layerDHCP != nil {
-			utils.LoggerWithOnu(onu).Info("Received downstream packet is DHCP.")
+			utils.LoggerWithOnu(onu).WithFields(log.Fields{
+				"payload": layerDHCP.LayerPayload(),
+				"type":    layerDHCP.LayerType().String(),
+			}).Info("Received downstream packet is DHCP.")
 			rawpkt, _, _ = PopVLAN(rawpkt)
 			rawpkt, _, _ = PopVLAN(rawpkt)
 		} else {
+			utils.LoggerWithOnu(onu).Info("WARNING: Received packet is not EAPOL or DHCP")
 			return nil
 		}
 		ioinfo, err := s.identifyUniIoinfo("inside", intfid, onuid)
@@ -478,10 +482,10 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 			return err
 		}
 		handle := ioinfo.handler
-		SendUni(handle, rawpkt)
+		SendUni(handle, rawpkt, onu)
 		return nil
 	}
-	logger.Info("WARNING: Received packet is not supported")
+	utils.LoggerWithOnu(onu).Info("WARNING: Received packet does not have layerEth")
 	return nil
 }
 
