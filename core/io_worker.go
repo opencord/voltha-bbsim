@@ -22,13 +22,12 @@ import (
 	"strconv"
 	"time"
 
-	"gerrit.opencord.org/voltha-bbsim/device"
-
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"gerrit.opencord.org/voltha-bbsim/common/utils"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"gerrit.opencord.org/voltha-bbsim/device"
+	"gerrit.opencord.org/voltha-bbsim/common/utils"
 )
 
 func RecvWorker(io *Ioinfo, handler *pcap.Handle, r chan Packet) {

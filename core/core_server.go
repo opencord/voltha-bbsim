@@ -31,6 +31,7 @@ import (
 	"github.com/google/gopacket/pcap"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -328,131 +329,157 @@ func createIoinfos(oltid uint32, Vethnames []string, onumap map[uint32][]*device
 func (s *Server) runPacketInDaemon(ctx context.Context, stream openolt.Openolt_EnableIndicationServer) error {
 	logger.Debug("runPacketInDaemon Start")
 	defer logger.Debug("runPacketInDaemon Done")
-	unichannel := make(chan Packet, 2048)
 
+	errch := make(chan error)
+	OmciRun(ctx, s.omciOut, s.omciIn, s.Onumap, errch)
+	parent := ctx
+	eg, child := errgroup.WithContext(parent)
+	child, cancel := context.WithCancel(child)
 
-	logger.Debug("runOMCIDaemon Start")
-	defer logger.Debug("runOMCIDaemon Done")
-	errch := make (chan error)
-	OmciRun(s.omciOut, s.omciIn, s.Onumap, errch)
-	go func(){
-		<-errch	// Wait for OmciInitialization
-		s.updateState(ACTIVE)
-	}()
-
-	for intfid, _ := range s.Onumap {
-		for _, onu := range s.Onumap[intfid] {
-			onuid := onu.OnuID
-			ioinfo, err := s.identifyUniIoinfo("inside", intfid, onuid)
-			if err != nil {
-				utils.LoggerWithOnu(onu).Error("Fail to identifyUniIoinfo (onuid: %d): %v", onuid, err)
-				return err
+	eg.Go (func() error {
+		logger.Debug("runOMCIDaemon Start")
+		defer logger.Debug("runOMCIDaemon Done")
+		select{
+		case v, ok := <- errch:	// Wait for OmciInitialization
+			if ok {	//Error
+				logger.Error("Error happend in Omci:%s", v)
+				return v
+			} else {	//Close
+				s.updateState(ACTIVE)
 			}
-			uhandler := ioinfo.handler
-			go RecvWorker(ioinfo, uhandler, unichannel)
+		case <- child.Done():
+			return nil
 		}
-	}
+		return nil
+	})
 
-	ioinfo, err := s.IdentifyNniIoinfo("inside")
-	if err != nil {
-		return err
-	}
-	nhandler := ioinfo.handler
-	nnichannel := make(chan Packet, 32)
-	go RecvWorker(ioinfo, nhandler, nnichannel)
-
-	data := &openolt.Indication_PktInd{}
-	for {
-		select {
-		case msg := <-s.omciIn:
-			logger.Debug("OLT %d send omci indication, IF %v (ONU-ID: %v) pkt:%x.", s.Olt.ID, msg.IntfId, msg.OnuId, msg.Pkt)
-			omci := &openolt.Indication_OmciInd{OmciInd: &msg}
-			if err := stream.Send(&openolt.Indication{Data: omci}); err != nil {
-				logger.Error("send omci indication failed.", err)
-				continue
+	eg.Go (func () error {
+		unichannel := make(chan Packet, 2048)
+		defer func() {
+			close(unichannel)
+			logger.Debug("Closed unichannel ")
+		}()
+		for intfid, _ := range s.Onumap {
+			for _, onu := range s.Onumap[intfid] {
+				onuid := onu.OnuID
+				ioinfo, err := s.identifyUniIoinfo("inside", intfid, onuid)
+				if err != nil {
+					utils.LoggerWithOnu(onu).Error("Fail to identifyUniIoinfo (onuid: %d): %v", onuid, err)
+					return err
+				}
+				uhandler := ioinfo.handler
+				go RecvWorker(ioinfo, uhandler, unichannel)
 			}
-		case unipkt := <-unichannel:
-			onuid := unipkt.Info.onuid
-			onu, _ := s.GetOnuByID(onuid)
-			utils.LoggerWithOnu(onu).Debug("Received packet from UNI in grpc Server")
-			if unipkt.Info == nil || unipkt.Info.iotype != "uni" {
-				logger.Debug("WARNING: This packet does not come from UNI ")
-				continue
-			}
+		}
 
-			intfid := unipkt.Info.intfid
-			gemid, _ := getGemPortID(intfid, onuid)
-			pkt := unipkt.Pkt
-			layerEth := pkt.Layer(layers.LayerTypeEthernet)
-			le, _ := layerEth.(*layers.Ethernet)
-			ethtype := le.EthernetType
+		ioinfo, err := s.IdentifyNniIoinfo("inside")
+		if err != nil {
+			return err
+		}
+		nhandler := ioinfo.handler
+		nnichannel := make(chan Packet, 32)
+		go RecvWorker(ioinfo, nhandler, nnichannel)
+		defer func(){
+			logger.Debug("PacketInDaemon thread receives close ")
+			close(nnichannel)
+		}()
 
-			if ethtype == 0x888e {
-				utils.LoggerWithOnu(onu).WithFields(log.Fields{
-					"gemId": gemid,
-				}).Info("Received upstream packet is EAPOL.")
-			} else if layerDHCP := pkt.Layer(layers.LayerTypeDHCPv4); layerDHCP != nil {
-				utils.LoggerWithOnu(onu).WithFields(log.Fields{
-					"gemId": gemid,
-				}).Info("Received upstream packet is DHCP.")
+		data := &openolt.Indication_PktInd{}
+		for {
+			select {
+			case msg := <-s.omciIn:
+				logger.Debug("OLT %d send omci indication, IF %v (ONU-ID: %v) pkt:%x.", s.Olt.ID, msg.IntfId, msg.OnuId, msg.Pkt)
+				omci := &openolt.Indication_OmciInd{OmciInd: &msg}
+				if err := stream.Send(&openolt.Indication{Data: omci}); err != nil {
+					logger.Error("send omci indication failed.", err)
+					continue
+				}
+			case unipkt := <-unichannel:
+				onuid := unipkt.Info.onuid
+				onu, _ := s.GetOnuByID(onuid)
+				utils.LoggerWithOnu(onu).Debug("Received packet from UNI in grpc Server")
+				if unipkt.Info == nil || unipkt.Info.iotype != "uni" {
+					logger.Debug("WARNING: This packet does not come from UNI ")
+					continue
+				}
 
-				//C-TAG
-				sn := convB2S(onu.SerialNumber.VendorSpecific)
-				if ctag, ok := s.CtagMap[sn]; ok == true {
-					tagpkt, err := PushVLAN(pkt, uint16(ctag), onu)
-					if err != nil {
-						utils.LoggerWithOnu(onu).WithFields(log.Fields{
-							"gemId": gemid,
-						}).Error("Fail to tag C-tag")
+				intfid := unipkt.Info.intfid
+				gemid, _ := getGemPortID(intfid, onuid)
+				pkt := unipkt.Pkt
+				layerEth := pkt.Layer(layers.LayerTypeEthernet)
+				le, _ := layerEth.(*layers.Ethernet)
+				ethtype := le.EthernetType
+
+				if ethtype == 0x888e {
+					utils.LoggerWithOnu(onu).WithFields(log.Fields{
+						"gemId": gemid,
+					}).Info("Received upstream packet is EAPOL.")
+				} else if layerDHCP := pkt.Layer(layers.LayerTypeDHCPv4); layerDHCP != nil {
+					utils.LoggerWithOnu(onu).WithFields(log.Fields{
+						"gemId": gemid,
+					}).Info("Received upstream packet is DHCP.")
+
+					//C-TAG
+					sn := convB2S(onu.SerialNumber.VendorSpecific)
+					if ctag, ok := s.CtagMap[sn]; ok == true {
+						tagpkt, err := PushVLAN(pkt, uint16(ctag), onu)
+						if err != nil {
+							utils.LoggerWithOnu(onu).WithFields(log.Fields{
+								"gemId": gemid,
+							}).Error("Fail to tag C-tag")
+						} else {
+							pkt = tagpkt
+						}
 					} else {
-						pkt = tagpkt
+						utils.LoggerWithOnu(onu).WithFields(log.Fields{
+							"gemId":   gemid,
+							"cTagMap": s.CtagMap,
+						}).Error("Could not find onuid in CtagMap", onuid, sn, s.CtagMap)
 					}
 				} else {
 					utils.LoggerWithOnu(onu).WithFields(log.Fields{
-						"gemId":   gemid,
-						"cTagMap": s.CtagMap,
-					}).Error("Could not find onuid in CtagMap", onuid, sn, s.CtagMap)
+						"gemId": gemid,
+					}).Info("Received upstream packet is of unknow type, skipping.")
+					continue
 				}
-			} else {
-				utils.LoggerWithOnu(onu).WithFields(log.Fields{
-					"gemId": gemid,
-				}).Info("Received upstream packet is of unknow type, skipping.")
-				continue
-			}
 
-			utils.LoggerWithOnu(onu).Info("sendPktInd - UNI Packet")
-			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "pon", IntfId: intfid, GemportId: gemid, Pkt: pkt.Data()}}
-			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-				logger.Error("Fail to send PktInd indication.", err)
-				return err
-			}
+				utils.LoggerWithOnu(onu).Info("sendPktInd - UNI Packet")
+				data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "pon", IntfId: intfid, GemportId: gemid, Pkt: pkt.Data()}}
+				if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
+					logger.Error("Fail to send PktInd indication.", err)
+					return err
+				}
 
-		case nnipkt := <-nnichannel:
-			if nnipkt.Info == nil || nnipkt.Info.iotype != "nni" {
-				logger.Debug("WARNING: This packet does not come from NNI ")
-				continue
-			}
-			onuid := nnipkt.Info.onuid
-			onu, _ := s.GetOnuByID(onuid)
+			case nnipkt := <-nnichannel:
+				if nnipkt.Info == nil || nnipkt.Info.iotype != "nni" {
+					logger.Debug("WARNING: This packet does not come from NNI ")
+					continue
+				}
+				onuid := nnipkt.Info.onuid
+				onu, _ := s.GetOnuByID(onuid)
 
-			utils.LoggerWithOnu(onu).Info("Received packet from NNI in grpc Server.")
-			intfid := nnipkt.Info.intfid
-			pkt := nnipkt.Pkt
-			utils.LoggerWithOnu(onu).Info("sendPktInd - NNI Packet")
-			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "nni", IntfId: intfid, Pkt: pkt.Data()}}
-			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-				logger.Error("Fail to send PktInd indication.", err)
-				return err
-			}
+				utils.LoggerWithOnu(onu).Info("Received packet from NNI in grpc Server.")
+				intfid := nnipkt.Info.intfid
+				pkt := nnipkt.Pkt
+				utils.LoggerWithOnu(onu).Info("sendPktInd - NNI Packet")
+				data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "nni", IntfId: intfid, Pkt: pkt.Data()}}
+				if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
+					logger.Error("Fail to send PktInd indication.", err)
+					return err
+				}
 
-		case <-ctx.Done():
-			logger.Debug("PacketInDaemon thread receives close ")
-			close(unichannel)
-			logger.Debug("Closed unichannel ")
-			close(nnichannel)
-			logger.Debug("Closed nnichannel ")
-			return nil
+			case <-child.Done():
+				logger.Debug("Closed nnichannel ")
+				return nil
+			}
 		}
+		return nil
+	})
+
+	logger.Debug("Wait here")
+	if err := eg.Wait(); err != nil {
+		logger.Error("Error happend in runPacketInDaemon:%s", err)
+		cancel()
 	}
 	return nil
 }
