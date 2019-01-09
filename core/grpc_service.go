@@ -89,6 +89,16 @@ func (s *Server) ActivateOnu(c context.Context, onu *openolt.Onu) (*openolt.Empt
 	return new(openolt.Empty), nil
 }
 
+func (s *Server) CreateTconts(c context.Context, tconts *openolt.Tconts) (*openolt.Empty, error) {
+	logger.Debug("OLT receives CreateTconts()")
+	return new(openolt.Empty), nil
+}
+
+func (s *Server) RemoveTconts(c context.Context, tconts *openolt.Tconts) (*openolt.Empty, error) {
+	logger.Debug("OLT receives RemoveTconts()")
+	return new(openolt.Empty), nil
+}
+
 func (s *Server) DeactivateOnu(c context.Context, onu *openolt.Onu) (*openolt.Empty, error) {
 	logger.Debug("OLT receives DeactivateONU()")
 	return new(openolt.Empty), nil
