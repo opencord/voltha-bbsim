@@ -17,76 +17,16 @@
 package core
 
 import (
-	"bytes"
 	"encoding/binary"
+	"time"
 
 	"context"
 	"errors"
-	"time"
 
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
 	"gerrit.opencord.org/voltha-bbsim/device"
 	"gerrit.opencord.org/voltha-bbsim/protos"
 )
-
-//
-// OMCI definitions
-//
-
-// OmciMsgType represents a OMCI message-type
-type OmciMsgType byte
-
-const (
-	// Message Types
-	_                                 = iota
-	Create                OmciMsgType = 4
-	Delete                OmciMsgType = 6
-	Set                   OmciMsgType = 8
-	Get                   OmciMsgType = 9
-	GetAllAlarms          OmciMsgType = 11
-	GetAllAlarmsNext      OmciMsgType = 12
-	MibUpload             OmciMsgType = 13
-	MibUploadNext         OmciMsgType = 14
-	MibReset              OmciMsgType = 15
-	AlarmNotification     OmciMsgType = 16
-	AttributeValueChange  OmciMsgType = 17
-	Test                  OmciMsgType = 18
-	StartSoftwareDownload OmciMsgType = 19
-	DownloadSection       OmciMsgType = 20
-	EndSoftwareDownload   OmciMsgType = 21
-	ActivateSoftware      OmciMsgType = 22
-	CommitSoftware        OmciMsgType = 23
-	SynchronizeTime       OmciMsgType = 24
-	Reboot                OmciMsgType = 25
-	GetNext               OmciMsgType = 26
-	TestResult            OmciMsgType = 27
-	GetCurrentData        OmciMsgType = 28
-	SetTable              OmciMsgType = 29 // Defined in Extended Message Set Only
-)
-
-const (
-	// Managed Entity Class values
-	GEMPortNetworkCTP OmciClass = 268
-)
-
-// OMCI Managed Entity Class
-type OmciClass uint16
-
-// OMCI Message Identifier
-type OmciMessageIdentifier struct {
-	Class    OmciClass
-	Instance uint16
-}
-
-type OmciContent [32]byte
-
-type OmciMessage struct {
-	TransactionId uint16
-	MessageType   OmciMsgType
-	DeviceId      uint8
-	MessageId     OmciMessageIdentifier
-	Content       OmciContent
-}
 
 const NumMibUploads byte = 26
 
@@ -150,7 +90,7 @@ func OmciRun(ctx context.Context, omciOut chan openolt.OmciMsg, omciIn chan open
 			var resp openolt.OmciIndication
 			select {
 			case m := <-omciOut:
-				transactionId, deviceId, msgType, class, instance, content, err := ParsePkt(m.Pkt)
+				transactionId, deviceId, msgType, class, instance, content, err := ParsePkt(HexDecode(m.Pkt))
 				if err != nil {
 					errch <- err
 					return
@@ -186,20 +126,6 @@ func OmciRun(ctx context.Context, omciOut chan openolt.OmciMsg, omciIn chan open
 			}
 		}
 	}()
-}
-
-func ParsePkt(pkt []byte) (uint16, uint8, OmciMsgType, OmciClass, uint16, OmciContent, error) {
-	var m OmciMessage
-
-	r := bytes.NewReader(HexDecode(pkt))
-
-	if err := binary.Read(r, binary.BigEndian, &m); err != nil {
-		logger.Error("binary.Read failed: %s", err)
-		return 0, 0, 0, 0, 0, OmciContent{}, errors.New("binary.Read failed")
-	}
-	logger.Debug("OmciRun - TransactionId: %d MessageType: %d, ME Class: %d, ME Instance: %d, Content: %x",
-		m.TransactionId, m.MessageType&0x0F, m.MessageId.Class, m.MessageId.Instance, m.Content)
-	return m.TransactionId, m.DeviceId, m.MessageType & 0x0F, m.MessageId.Class, m.MessageId.Instance, m.Content, nil
 }
 
 func HexDecode(pkt []byte) []byte {
