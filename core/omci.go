@@ -64,8 +64,8 @@ var Handlers = map[OmciMsgType]OmciMsgHandler{
 
 var OnuOmciStateMap = map[OnuKey]*OnuOmciState{}
 
-func OmciRun(ctx context.Context, omciOut chan openolt.OmciMsg, omciIn chan openolt.OmciIndication, onumap map[uint32][]*device.Onu, errch chan error) {
-	go func() { //For monitoring the OMCI states
+func RunOmciResponder(ctx context.Context, omciOut chan openolt.OmciMsg, omciIn chan openolt.OmciIndication, onumap map[uint32][] *device.Onu, errch chan error) {
+	go func() { //For monitoring the OMCI states TODO: This part should be eliminated because it is out of scope of this library
 		t := time.NewTicker(1 * time.Second)
 		defer t.Stop()
 		for {
