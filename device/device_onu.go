@@ -25,15 +25,13 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type onuState int
-
 const (
-	ONU_PRE_ACTIVATED onuState = iota
-	ONU_ACTIVATED
+	ONU_PREACTIVATED DeviceState = iota
+	ONU_ACTIVE
 )
 
 type Onu struct {
-	InternalState *onuState
+	InternalState DeviceState
 	OltID         uint32
 	IntfID        uint32
 	OperState     string
@@ -51,8 +49,7 @@ func NewOnus(oltid uint32, intfid uint32, nonus uint32, nnni uint32) []*Onu {
 	onus := []*Onu{}
 	for i := 0; i < int(nonus); i++ {
 		onu := Onu{}
-		onu.InternalState = new(onuState)
-		*onu.InternalState = ONU_PRE_ACTIVATED
+		onu.InternalState = ONU_PREACTIVATED
 		onu.mu = &sync.Mutex{}
 		onu.IntfID = intfid
 		onu.OltID = oltid
@@ -65,9 +62,9 @@ func NewOnus(oltid uint32, intfid uint32, nonus uint32, nnni uint32) []*Onu {
 	return onus
 }
 
-func (onu *Onu) InitializeStatus() {
+func (onu *Onu) Initialize() {
 	onu.OperState = "up"
-	*onu.InternalState = ONU_PRE_ACTIVATED
+	onu.InternalState = ONU_PREACTIVATED
 }
 
 func ValidateONU(targetonu openolt.Onu, regonus map[uint32][]*Onu) bool {
@@ -95,14 +92,18 @@ func UpdateOnusOpStatus(ponif uint32, onus []*Onu, opstatus string) {
 	}
 }
 
-func (onu *Onu) UpdateIntStatus(intstatus onuState) {
+func (onu *Onu) UpdateIntState(intstate DeviceState) {
 	onu.mu.Lock()
 	defer onu.mu.Unlock()
-	*onu.InternalState = intstatus
+	onu.InternalState = intstate
 }
 
-func (onu *Onu) GetIntStatus() onuState {
+func (onu *Onu) GetDevkey () Devkey {
+	return Devkey{ID: onu.OnuID, Intfid:onu.IntfID}
+}
+
+func (onu *Onu) GetIntState() DeviceState {
 	onu.mu.Lock()
 	defer onu.mu.Unlock()
-	return *onu.InternalState
+	return onu.InternalState
 }

@@ -16,7 +16,21 @@
 
 package device
 
-type oltState int
+import "sync"
+
+type DeviceState int
+
+type Device interface {
+	Initialize()
+	UpdateIntState(intstate DeviceState)
+	GetIntState() DeviceState
+	GetDevkey() Devkey
+}
+
+type Devkey struct {
+	ID uint32
+	Intfid uint32
+}
 
 type Olt struct {
 	ID                 uint32
@@ -26,10 +40,11 @@ type Olt struct {
 	SerialNumber       string
 	Manufacture        string
 	Name               string
-	InternalState      *oltState
+	InternalState      DeviceState
 	OperState          string
 	Intfs              []intf
 	HeartbeatSignature uint32
+	mu            *sync.Mutex
 }
 
 type intf struct {
@@ -38,11 +53,16 @@ type intf struct {
 	OperState string
 }
 
+/* OltState
+OLT_INACTIVE -> OLT_PREACTIVE -> ACTIVE
+    (ActivateOLT)   (Enable)
+       <-              <-
+*/
+
 const (
-	PRE_ENABLE oltState = iota
-	OLT_UP
-	PONIF_UP
-	ONU_DISCOVERED
+	OLT_INACTIVE DeviceState  = iota // OLT/ONUs are not instantiated
+	OLT_PREACTIVE        // Before PacketInDaemon Running
+	OLT_ACTIVE            // After PacketInDaemon Running
 )
 
 func NewOlt(oltid uint32, npon uint32, nnni uint32) *Olt {
@@ -51,11 +71,11 @@ func NewOlt(oltid uint32, npon uint32, nnni uint32) *Olt {
 	olt.NumPonIntf = npon
 	olt.NumNniIntf = nnni
 	olt.Name = "BBSIM OLT"
-	olt.InternalState = new(oltState)
-	*olt.InternalState = PRE_ENABLE
+	olt.InternalState = OLT_INACTIVE
 	olt.OperState = "up"
 	olt.Intfs = make([]intf, olt.NumPonIntf+olt.NumNniIntf)
 	olt.HeartbeatSignature = oltid
+	olt.mu = &sync.Mutex{}
 	for i := uint32(0); i < olt.NumNniIntf; i++ {
 		olt.Intfs[i].IntfID = i
 		olt.Intfs[i].OperState = "up"
@@ -69,8 +89,8 @@ func NewOlt(oltid uint32, npon uint32, nnni uint32) *Olt {
 	return &olt
 }
 
-func (olt *Olt) InitializeStatus() {
-	*olt.InternalState = PRE_ENABLE
+func (olt *Olt) Initialize() {
+	olt.InternalState = OLT_INACTIVE
 	olt.OperState = "up"
 	for i := uint32(0); i < olt.NumNniIntf; i++ {
 		olt.Intfs[i].IntfID = i
@@ -82,4 +102,20 @@ func (olt *Olt) InitializeStatus() {
 		olt.Intfs[i].OperState = "up"
 		olt.Intfs[i].Type = "pon"
 	}
+}
+
+func (olt *Olt) GetIntState() DeviceState {
+	olt.mu.Lock()
+	defer olt.mu.Unlock()
+	return olt.InternalState
+}
+
+func (olt *Olt) GetDevkey () Devkey {
+	return Devkey{ID: olt.ID}
+}
+
+func (olt *Olt) UpdateIntState(intstate DeviceState) {
+	olt.mu.Lock()
+	defer olt.mu.Unlock()
+	olt.InternalState = intstate
 }

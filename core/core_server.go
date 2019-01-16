@@ -32,6 +32,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"golang.org/x/sync/errgroup"
+	"reflect"
 )
 
 const (
@@ -56,8 +57,7 @@ type Server struct {
 	EnableServer *openolt.Openolt_EnableIndicationServer
 	CtagMap      map[string]uint32
 	cancel       context.CancelFunc
-	state        coreState
-	stateChan    chan coreState
+	stateRepCh   chan stateReport
 	omciIn       chan openolt.OmciIndication
 	omciOut      chan openolt.OmciMsg
 }
@@ -67,19 +67,11 @@ type Packet struct {
 	Pkt  gopacket.Packet
 }
 
-type coreState int
-
-const (
-	INACTIVE   = iota // OLT/ONUs are not instantiated
-	PRE_ACTIVE        // Before running MainPacketLoop
-	ACTIVE            // After running MainPacketLoop
-)
-
-/* coreState
-INACTIVE -> PRE_ACTIVE -> ACTIVE
-    (ActivateOLT)   (Enable)
-       <-              <-
-*/
+type stateReport struct {
+	device device.Device
+	current device.DeviceState
+	next device.DeviceState
+}
 
 func NewCore(opt *option) *Server {
 	// TODO: make it decent
@@ -96,8 +88,7 @@ func NewCore(opt *option) *Server {
 		IndInterval:  opt.intvl,
 		Processes:    []string{},
 		EnableServer: nil,
-		state:        INACTIVE,
-		stateChan:    make(chan coreState, 8),
+		stateRepCh  : make(chan stateReport, 8),
 		omciIn:       make(chan openolt.OmciIndication, 1024),
 		omciOut:      make(chan openolt.OmciMsg, 1024),
 	}
@@ -124,7 +115,7 @@ func (s *Server) Start() error {
 	s.wg = &sync.WaitGroup{}
 	logger.Debug("Start() Start")
 	defer func() {
-		close(s.stateChan)
+		close(s.stateRepCh  )
 		logger.Debug("Start() Done")
 	}()
 	addressport := s.gRPCAddress + ":" + strconv.Itoa(int(s.gRPCPort))
@@ -157,15 +148,15 @@ func (s *Server) Stop() {
 
 // Blocking
 func (s *Server) Enable(sv *openolt.Openolt_EnableIndicationServer) error {
+	olt := s.Olt
 	defer func() {
-		olt := s.Olt
-		olt.InitializeStatus()
+		olt.Initialize()
 		for intfid, _ := range s.Onumap {
 			for _, onu := range s.Onumap[intfid] {
-				onu.InitializeStatus()
+				onu.Initialize()
 			}
 		}
-		s.updateState(INACTIVE)
+		s.updateDevIntState(olt, device.OLT_INACTIVE)
 		logger.Debug("Enable() Done")
 	}()
 	logger.Debug("Enable() Start")
@@ -173,7 +164,7 @@ func (s *Server) Enable(sv *openolt.Openolt_EnableIndicationServer) error {
 	if err := s.activateOLT(*sv); err != nil {
 		return err
 	}
-	s.updateState(PRE_ACTIVE)
+	s.updateDevIntState(olt, device.OLT_PREACTIVE)
 
 	coreCtx := context.Background()
 	coreCtx, corecancel := context.WithCancel(coreCtx)
@@ -193,10 +184,17 @@ func (s *Server) Disable() {
 	s.StopPktLoops()
 }
 
-func (s *Server) updateState(state coreState) {
-	s.state = state
-	s.stateChan <- state
-	logger.Debug("State updated to:%d", state)
+func (s *Server) updateDevIntState(dev device.Device, state device.DeviceState) {
+	current := dev.GetIntState()
+	dev.UpdateIntState(state)
+	s.stateRepCh <- stateReport{device: dev, current:current, next: state}
+	if reflect.TypeOf(dev) == reflect.TypeOf(&device.Olt{}){
+		logger.Debug("OLT State updated to:%d", state)
+	} else if reflect.TypeOf(dev) == reflect.TypeOf(&device.Onu{}){
+		logger.Debug("ONU State updated to:%d", state)
+	} else {
+		logger.Error("UpdateDevIntState () doesn't support this device: %s", reflect.TypeOf(dev))
+	}
 }
 
 func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) error {
@@ -208,7 +206,6 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 		return err
 	}
 	olt.OperState = "up"
-	*olt.InternalState = device.OLT_UP
 	logger.Info("OLT %s sent OltInd.", olt.Name)
 
 	// OLT sends Interface Indication to Adapter
@@ -220,7 +217,6 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 
 	// OLT sends Operation Indication to Adapter after activating each interface
 	//time.Sleep(IF_UP_TIME * time.Second)
-	*olt.InternalState = device.PONIF_UP
 	if err := sendOperInd(stream, olt); err != nil {
 		logger.Error("Fail to sendOperInd: %v", err)
 		return err
@@ -260,7 +256,7 @@ func (s *Server) StartPktLoops(ctx context.Context, stream openolt.Openolt_Enabl
 		s.Vethnames = []string{}
 		s.Ioinfos = []*Ioinfo{}
 		s.wg.Done()
-		s.updateState(PRE_ACTIVE)
+		s.updateDevIntState(s.Olt, device.OLT_PREACTIVE)
 		logger.Debug("StartPktLoops () Done")
 	}()
 	s.wg.Add(1)
@@ -344,7 +340,7 @@ func (s *Server) runPktLoops(ctx context.Context, stream openolt.Openolt_EnableI
 				logger.Error("Error happend in Omci:%s", v)
 				return v
 			} else {	//Close
-				s.updateState(ACTIVE)
+				s.updateDevIntState(s.Olt, device.OLT_ACTIVE)
 			}
 		case <- child.Done():
 			return nil
@@ -536,7 +532,7 @@ func (s *Server) uplinkPacketOut(rawpkt gopacket.Packet) error {
 func IsAllOnuActive(onumap map[uint32][]*device.Onu) bool {
 	for _, onus := range onumap {
 		for _, onu := range onus {
-			if onu.GetIntStatus() != device.ONU_ACTIVATED {
+			if onu.GetIntState() != device.ONU_ACTIVE {
 				return false
 			}
 		}

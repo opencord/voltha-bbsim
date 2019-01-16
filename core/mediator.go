@@ -27,6 +27,8 @@ import (
 
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
 	log "github.com/sirupsen/logrus"
+	"gerrit.opencord.org/voltha-bbsim/device"
+	"reflect"
 )
 
 type option struct {
@@ -79,32 +81,14 @@ func GetOptions() *option {
 	return o
 }
 
-type stateMachine struct {
-	handlers []*handler
-	state    coreState
-}
-
 type handler struct {
-	dst    coreState
-	src    coreState
+	dst    device.DeviceState
+	src    device.DeviceState
 	method func(s *Server) error
-}
-
-func (sm *stateMachine) transit(next coreState) func(s *Server) error {
-	for _, handler := range sm.handlers {
-		if handler.src == sm.state && handler.dst == next {
-			logger.Debug("Hit (src:%d, dst:%d)", handler.src, handler.dst)
-			sm.state = next
-			return handler.method
-		}
-	}
-	sm.state = next
-	return nil
 }
 
 type mediator struct {
 	opt    *option
-	sm     *stateMachine
 	server *Server
 	tester *Tester
 }
@@ -138,15 +122,9 @@ func (m *mediator) Start() {
 	tester := NewTester(opt)
 	m.server = server
 	m.tester = tester
-	m.sm = &stateMachine{
-		state: INACTIVE,
-		handlers: []*handler{
-			&handler{src: PRE_ACTIVE, dst: ACTIVE, method: m.tester.Start},
-			&handler{src: ACTIVE, dst: PRE_ACTIVE, method: m.tester.Stop},
-		},
-	}
+
 	go func() {
-		m.Mediate()
+		m.Mediate(server)
 	}()
 
 	c := make(chan os.Signal, 1)
@@ -169,23 +147,36 @@ func (m *mediator) Start() {
 	logger.Debug("Reach to the end line")
 }
 
-func (m *mediator) Mediate() {
-	wg := sync.WaitGroup{}
+func (m *mediator) Mediate(s *Server) {
 	defer logger.Debug("Mediate Done")
-	for corestat := range m.server.stateChan {
-		logger.Debug("Mediator receives state %d of server", corestat)
-		method := m.sm.transit(corestat)
-		if method != nil {
-			wg.Add(1)
-			defer wg.Done()
-			go func() error {
-				if err := method(m.server); err != nil { //blocking
-					m.server.Stop()
-					return err
-				}
-				return nil
-			}()
+	for sr := range m.server.stateRepCh {
+		next := sr.next
+		current := sr.current
+		dev := sr.device
+		if reflect.TypeOf(dev) == reflect.TypeOf(&device.Olt{}){
+			logger.Debug("Received OLT Device %v Current: %d Next: %d", dev, current, next)
+			if err := transitOlt(s, current, next, m.tester, m.opt); err != nil {
+				logger.Error("%v", err)
+			}
+		} else if reflect.TypeOf(dev) == reflect.TypeOf(&device.Onu{}) {
+			logger.Debug("Received ONU Device %v Current: %d Next: %d", dev, current, next)
+			key := dev.GetDevkey()
+			if err := transitOnu(s, key, current, next, m.tester, m.opt); err != nil {
+				logger.Error("%v", err)
+			}
 		}
 	}
-	wg.Wait()
+}
+
+func transitOlt (s *Server, current device.DeviceState, next device.DeviceState, tester *Tester, o *option) error {
+	if current == device.OLT_PREACTIVE && next == device.OLT_ACTIVE {
+		tester.Start(s)
+	} else if current == device.OLT_ACTIVE && next == device.OLT_PREACTIVE{
+		tester.Stop(s)
+	}
+	return nil
+}
+
+func transitOnu (s *Server, key device.Devkey, current device.DeviceState, next device.DeviceState, tester *Tester, o *option) error {
+	return nil
 }

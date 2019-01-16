@@ -83,7 +83,7 @@ func (s *Server) ActivateOnu(c context.Context, onu *openolt.Onu) (*openolt.Empt
 		}
 		onuid := onu.OnuId
 		matched.OnuID = onuid
-		matched.UpdateIntStatus(device.ONU_ACTIVATED)
+		s.updateDevIntState(matched, device.ONU_ACTIVE)
 		logger.Debug("ONU IntfID: %d OnuID: %d activated succesufully.", onu.IntfId, onu.OnuId)
 	}
 	return new(openolt.Empty), nil
