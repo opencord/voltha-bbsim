@@ -27,7 +27,7 @@ BBSim containers
 git clone https://github.com/opencord/voltha-bbsim
 cd voltha-bbsim
 make docker
-docker run -it --rm --privileged=true --expose=50060 --network=compose_default voltha/voltha-bbsim /go/src/gerrit.opencord.org/voltha-bbsim/bbsim -n 16
+docker run -it --rm --privileged=true --expose=50060 --network=compose_default voltha/voltha-bbsim ./bbsim -n 16
 
 # After this, execute the following commands from VOLTHA-CLI
 (voltha) health
