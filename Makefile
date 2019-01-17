@@ -23,6 +23,7 @@ prereq:
 	go get -v github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway
 	go get -v github.com/golang/protobuf/protoc-gen-go
 	go get -v github.com/google/gopacket
+	go get -v github.com/opencord/omci-sim
 
 bbsim: prereq protos/openolt.pb.go dep
 	go build -i -v -o $@

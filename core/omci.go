@@ -24,6 +24,7 @@ import (
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
 	"gerrit.opencord.org/voltha-bbsim/device"
 	"gerrit.opencord.org/voltha-bbsim/protos"
+	omci "github.com/opencord/omci-sim"
 )
 
 func RunOmciResponder(ctx context.Context, omciOut chan openolt.OmciMsg, omciIn chan openolt.OmciIndication, onumap map[uint32][]*device.Onu, errch chan error) {
@@ -54,7 +55,7 @@ func RunOmciResponder(ctx context.Context, omciOut chan openolt.OmciMsg, omciIn 
 		for {
 			select {
 			case m := <-omciOut:
-				resp_pkt, err := OmciSim(m.IntfId, m.OnuId, HexDecode(m.Pkt))
+				resp_pkt, err := omci.OmciSim(m.IntfId, m.OnuId, HexDecode(m.Pkt))
 				switch err := err.(type) {
 				case nil:
 					// Success
@@ -62,7 +63,7 @@ func RunOmciResponder(ctx context.Context, omciOut chan openolt.OmciMsg, omciIn 
 					resp.OnuId = m.OnuId
 					resp.Pkt = resp_pkt
 					omciIn <- resp
-				case *OmciError:
+				case *omci.OmciError:
 					// Error in processing omci message. Log and carry on.
 					logger.Debug("%s", err.Msg)
 					continue
@@ -95,7 +96,7 @@ func HexDecode(pkt []byte) []byte {
 func isAllOmciInitDone(onumap map[uint32][]*device.Onu) bool {
 	for _, onus := range onumap {
 		for _, onu := range onus {
-			if GetOnuOmciState(onu.OnuID, onu.IntfID) == INCOMPLETE {
+			if omci.GetOnuOmciState(onu.OnuID, onu.IntfID) == omci.INCOMPLETE {
 				return false
 			}
 		}

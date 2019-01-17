@@ -22,6 +22,10 @@ import (
 	"strconv"
 	"sync"
 
+	omci "github.com/opencord/omci-sim"
+
+	"reflect"
+
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
 	"gerrit.opencord.org/voltha-bbsim/common/utils"
 	"gerrit.opencord.org/voltha-bbsim/device"
@@ -30,9 +34,8 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	log "github.com/sirupsen/logrus"
-	"google.golang.org/grpc"
 	"golang.org/x/sync/errgroup"
-	"reflect"
+	"google.golang.org/grpc"
 )
 
 const (
@@ -68,9 +71,9 @@ type Packet struct {
 }
 
 type stateReport struct {
-	device device.Device
+	device  device.Device
 	current device.DeviceState
-	next device.DeviceState
+	next    device.DeviceState
 }
 
 func NewCore(opt *option) *Server {
@@ -88,7 +91,7 @@ func NewCore(opt *option) *Server {
 		IndInterval:  opt.intvl,
 		Processes:    []string{},
 		EnableServer: nil,
-		stateRepCh  : make(chan stateReport, 8),
+		stateRepCh:   make(chan stateReport, 8),
 		omciIn:       make(chan openolt.OmciIndication, 1024),
 		omciOut:      make(chan openolt.OmciMsg, 1024),
 	}
@@ -115,7 +118,7 @@ func (s *Server) Start() error {
 	s.wg = &sync.WaitGroup{}
 	logger.Debug("Start() Start")
 	defer func() {
-		close(s.stateRepCh  )
+		close(s.stateRepCh)
 		logger.Debug("Start() Done")
 	}()
 	addressport := s.gRPCAddress + ":" + strconv.Itoa(int(s.gRPCPort))
@@ -187,10 +190,10 @@ func (s *Server) Disable() {
 func (s *Server) updateDevIntState(dev device.Device, state device.DeviceState) {
 	current := dev.GetIntState()
 	dev.UpdateIntState(state)
-	s.stateRepCh <- stateReport{device: dev, current:current, next: state}
-	if reflect.TypeOf(dev) == reflect.TypeOf(&device.Olt{}){
+	s.stateRepCh <- stateReport{device: dev, current: current, next: state}
+	if reflect.TypeOf(dev) == reflect.TypeOf(&device.Olt{}) {
 		logger.Debug("OLT State updated to:%d", state)
-	} else if reflect.TypeOf(dev) == reflect.TypeOf(&device.Onu{}){
+	} else if reflect.TypeOf(dev) == reflect.TypeOf(&device.Onu{}) {
 		logger.Debug("ONU State updated to:%d", state)
 	} else {
 		logger.Error("UpdateDevIntState () doesn't support this device: %s", reflect.TypeOf(dev))
@@ -331,24 +334,24 @@ func (s *Server) runPktLoops(ctx context.Context, stream openolt.Openolt_EnableI
 	eg, child := errgroup.WithContext(ctx)
 	child, cancel := context.WithCancel(child)
 
-	eg.Go (func() error {
+	eg.Go(func() error {
 		logger.Debug("runOMCIResponder Start")
 		defer logger.Debug("runOMCIResponder Done")
-		select{
-		case v, ok := <- errch:	// Wait for OmciInitialization
-			if ok {	//Error
+		select {
+		case v, ok := <-errch: // Wait for OmciInitialization
+			if ok { //Error
 				logger.Error("Error happend in Omci:%s", v)
 				return v
-			} else {	//Close
+			} else { //Close
 				s.updateDevIntState(s.Olt, device.OLT_ACTIVE)
 			}
-		case <- child.Done():
+		case <-child.Done():
 			return nil
 		}
 		return nil
 	})
 
-	eg.Go (func () error {
+	eg.Go(func() error {
 		err := s.runMainPktLoop(child, stream)
 		return err
 	})
@@ -385,7 +388,7 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 	}
 	nhandler, nnichannel := ioinfo.handler, make(chan Packet, 32)
 	go RecvWorker(ioinfo, nhandler, nnichannel)
-	defer func(){
+	defer func() {
 		close(nnichannel)
 	}()
 
@@ -541,15 +544,8 @@ func IsAllOnuActive(onumap map[uint32][]*device.Onu) bool {
 }
 
 func getGemPortID(intfid uint32, onuid uint32) (uint32, error) {
-	key := OnuKey{intfid, onuid}
-	if onuState, ok := OnuOmciStateMap[key]; !ok {
-		idx := uint32(0)
-		// Backwards compatible with bbsim_olt adapter
-		return 1024 + (((MAX_ONUS_PER_PON*intfid + onuid - 1) * 7) + idx), nil
-	} else {
-		// FIXME - Gem Port ID is 2 bytes - fix openolt.proto
-		return uint32(onuState.gemPortId), nil
-	}
+	// FIXME - check for errors
+	return uint32(omci.GetGemPortId(intfid, onuid)), nil
 }
 
 func getOnuBySN(onumap map[uint32][]*device.Onu, sn *openolt.SerialNumber) (*device.Onu, error) {
