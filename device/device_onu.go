@@ -26,8 +26,9 @@ import (
 )
 
 const (
-	ONU_PREACTIVATED DeviceState = iota
+	ONU_INACTIVE   DeviceState = iota	//TODO: Each stage name should be more accurate
 	ONU_ACTIVE
+	ONU_OMCIACTIVE
 )
 
 type Onu struct {
@@ -49,7 +50,7 @@ func NewOnus(oltid uint32, intfid uint32, nonus uint32, nnni uint32) []*Onu {
 	onus := []*Onu{}
 	for i := 0; i < int(nonus); i++ {
 		onu := Onu{}
-		onu.InternalState = ONU_PREACTIVATED
+		onu.InternalState = ONU_INACTIVE
 		onu.mu = &sync.Mutex{}
 		onu.IntfID = intfid
 		onu.OltID = oltid
@@ -64,7 +65,7 @@ func NewOnus(oltid uint32, intfid uint32, nonus uint32, nnni uint32) []*Onu {
 
 func (onu *Onu) Initialize() {
 	onu.OperState = "up"
-	onu.InternalState = ONU_PREACTIVATED
+	onu.InternalState = ONU_INACTIVE
 }
 
 func ValidateONU(targetonu openolt.Onu, regonus map[uint32][]*Onu) bool {

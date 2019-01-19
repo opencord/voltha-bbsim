@@ -170,7 +170,7 @@ func (m *mediator) Mediate(s *Server) {
 
 func transitOlt (s *Server, current device.DeviceState, next device.DeviceState, tester *Tester, o *option) error {
 	if current == device.OLT_PREACTIVE && next == device.OLT_ACTIVE {
-		tester.Start(s)
+
 	} else if current == device.OLT_ACTIVE && next == device.OLT_PREACTIVE{
 		tester.Stop(s)
 	}
@@ -178,5 +178,12 @@ func transitOlt (s *Server, current device.DeviceState, next device.DeviceState,
 }
 
 func transitOnu (s *Server, key device.Devkey, current device.DeviceState, next device.DeviceState, tester *Tester, o *option) error {
+	if current == device.ONU_ACTIVE && next == device.ONU_OMCIACTIVE {
+		if s.isAllOnuOmciActive(){	//TODO: This should be per-ONU control, not by cheking All ONU's status
+			tester.Start(s)
+		}
+	} else if (current == device.ONU_OMCIACTIVE || current == device.ONU_ACTIVE) &&
+		next == device.ONU_INACTIVE {
+	}
 	return nil
 }

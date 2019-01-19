@@ -25,6 +25,7 @@ import (
 	"gerrit.opencord.org/voltha-bbsim/protos"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	omci "github.com/opencord/omci-sim"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -138,14 +139,27 @@ func (s *Server) UplinkPacketOut(c context.Context, packet *openolt.UplinkPacket
 }
 
 func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty, error) {
+	logger.Debug("OLT %d receives FlowAdd() IntfID:%d OnuID:%d EType:%x:.", s.Olt.ID, flow.AccessIntfId, flow.OnuId, flow.Classifier.EthType)
+	onu, err := s.GetOnuByID(uint32(flow.OnuId))
 
-	onu, _ := s.GetOnuByID(uint32(flow.OnuId))
+	if err == nil {
+		intfid := onu.IntfID
+		onuid := onu.OnuID
 
-	utils.LoggerWithOnu(onu).WithFields(log.Fields{
-		"olt":   s.Olt.ID,
-		"c_tag": flow.Action.IVid,
-	}).Debug("OLT receives FlowAdd().")
+		utils.LoggerWithOnu(onu).WithFields(log.Fields{
+			"olt":   s.Olt.ID,
+			"c_tag": flow.Action.IVid,
+		}).Debug("OLT receives FlowAdd().")
 
+		if flow.Classifier.EthType == uint32(layers.EthernetTypeEAPOL) {
+			omcistate := omci.GetOnuOmciState(onu.OnuID, onu.IntfID)
+			if omcistate == omci.DONE {
+				s.updateOnuIntState(intfid, onuid, device.ONU_OMCIACTIVE)
+			} else {
+				logger.Error("FlowAdd() OMCI state %d is not \"DONE\"", omci.GetOnuOmciState(onu.OnuID, onu.IntfID))
+			}
+		}
+	}
 	return new(openolt.Empty), nil
 }
 

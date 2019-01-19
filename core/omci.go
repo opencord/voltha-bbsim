@@ -17,8 +17,6 @@
 package core
 
 import (
-	"time"
-
 	"context"
 
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
@@ -28,25 +26,6 @@ import (
 )
 
 func RunOmciResponder(ctx context.Context, omciOut chan openolt.OmciMsg, omciIn chan openolt.OmciIndication, onumap map[uint32][]*device.Onu, errch chan error) {
-	go func() { //For monitoring the OMCI states TODO: This part should be eliminated because it is out of scope of this library
-		t := time.NewTicker(1 * time.Second)
-		defer t.Stop()
-		for {
-			select {
-			case <-t.C:
-				logger.Debug("Monitor omci init state")
-				if isAllOmciInitDone(onumap) {
-					logger.Info("OmciRun - All the omci initialization wes done")
-					close(errch)
-					return
-				}
-			case <-ctx.Done():
-				logger.Debug("Omci Monitoring process was done")
-				return
-			}
-		}
-	}()
-
 	go func() {
 		defer logger.Debug("Omci response process was done")
 
@@ -93,13 +72,3 @@ func HexDecode(pkt []byte) []byte {
 	return p
 }
 
-func isAllOmciInitDone(onumap map[uint32][]*device.Onu) bool {
-	for _, onus := range onumap {
-		for _, onu := range onus {
-			if omci.GetOnuOmciState(onu.OnuID, onu.IntfID) == omci.INCOMPLETE {
-				return false
-			}
-		}
-	}
-	return true
-}

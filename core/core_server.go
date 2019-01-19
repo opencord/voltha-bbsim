@@ -200,6 +200,15 @@ func (s *Server) updateDevIntState(dev device.Device, state device.DeviceState) 
 	}
 }
 
+func (s *Server) updateOnuIntState (intfid uint32, onuid uint32, state device.DeviceState) error {
+	onu, err := s.GetOnuByID(onuid)	//TODO: IntfID should be included ?
+	if err != nil {
+		return err
+	}
+	s.updateDevIntState(onu, state)
+	return nil
+}
+
 func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) error {
 	defer logger.Debug("activateOLT() Done")
 	logger.Debug("activateOLT() Start")
@@ -368,6 +377,7 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 	defer func() {
 		close(unichannel)
 		logger.Debug("Closed unichannel ")
+		logger.Debug("runMainPktLoop Done")
 	}()
 	for intfid, _ := range s.Onumap {
 		for _, onu := range s.Onumap[intfid] {
@@ -418,7 +428,7 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 			le, _ := layerEth.(*layers.Ethernet)
 			ethtype := le.EthernetType
 
-			if ethtype == 0x888e {
+			if ethtype == layers.EthernetTypeEAPOL {
 				utils.LoggerWithOnu(onu).WithFields(log.Fields{
 					"gemId": gemid,
 				}).Info("Received upstream packet is EAPOL.")
@@ -491,7 +501,7 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 	if layerEth != nil {
 		pkt, _ := layerEth.(*layers.Ethernet)
 		ethtype := pkt.EthernetType
-		if ethtype == 0x888e {
+		if ethtype == layers.EthernetTypeEAPOL {
 			utils.LoggerWithOnu(onu).Info("Received downstream packet is EAPOL.")
 		} else if layerDHCP := rawpkt.Layer(layers.LayerTypeDHCPv4); layerDHCP != nil {
 			utils.LoggerWithOnu(onu).WithFields(log.Fields{
@@ -536,6 +546,17 @@ func IsAllOnuActive(onumap map[uint32][]*device.Onu) bool {
 	for _, onus := range onumap {
 		for _, onu := range onus {
 			if onu.GetIntState() != device.ONU_ACTIVE {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (s *Server) isAllOnuOmciActive() bool {
+	for _, onus := range s.Onumap {
+		for _, onu := range onus{
+			if onu.GetIntState() != device.ONU_OMCIACTIVE {
 				return false
 			}
 		}
