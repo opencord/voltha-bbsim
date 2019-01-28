@@ -152,7 +152,7 @@ func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty,
 		}).Debug("OLT receives FlowAdd().")
 
 		if flow.Classifier.EthType == uint32(layers.EthernetTypeEAPOL) {
-			omcistate := omci.GetOnuOmciState(onu.OnuID, onu.IntfID)
+			omcistate := omci.GetOnuOmciState(onu.IntfID, onu.OnuID)
 			if omcistate == omci.DONE {
 				s.updateOnuIntState(intfid, onuid, device.ONU_OMCIACTIVE)
 			} else {

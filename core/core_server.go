@@ -422,7 +422,10 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 			}
 
 			intfid := unipkt.Info.intfid
-			gemid, _ := getGemPortID(intfid, onuid)
+			gemid, err := getGemPortID(intfid, onuid)
+			if err != nil {
+				continue
+			}
 			pkt := unipkt.Pkt
 			layerEth := pkt.Layer(layers.LayerTypeEthernet)
 			le, _ := layerEth.(*layers.Ethernet)
@@ -565,8 +568,13 @@ func (s *Server) isAllOnuOmciActive() bool {
 }
 
 func getGemPortID(intfid uint32, onuid uint32) (uint32, error) {
-	// FIXME - check for errors
-	return uint32(omci.GetGemPortId(intfid, onuid)), nil
+	logger.Debug("getGemPortID(intfid:%d, onuid:%d)", intfid, onuid)
+	gemportid, err := omci.GetGemPortId(intfid, onuid)
+	if err != nil {
+		logger.Error("%s", err)
+		return 0, err
+	}
+	return uint32(gemportid), nil
 }
 
 func getOnuBySN(onumap map[uint32][]*device.Onu, sn *openolt.SerialNumber) (*device.Onu, error) {
