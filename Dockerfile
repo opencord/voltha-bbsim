@@ -29,8 +29,7 @@ RUN apt-get update \
  && mv /tmp/protoc3/bin/* /usr/local/bin/ \
  && mv /tmp/protoc3/include/* /usr/local/include/ \
  && go get -v github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway \
- && go get -v github.com/golang/protobuf/protoc-gen-go \
- && go get -v github.com/opencord/omci-sim
+ && go get -v github.com/golang/protobuf/protoc-gen-go 
 
 # copy and build
 WORKDIR /go/src/gerrit.opencord.org/voltha-bbsim
