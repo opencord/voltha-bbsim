@@ -44,6 +44,7 @@ type option struct {
 	intvl_test  int
 	Mode        Mode
 	KafkaBroker string
+	Debuglvl	string
 }
 
 func GetOptions() *option {
@@ -60,12 +61,14 @@ func GetOptions() *option {
 	intvl_test := flag.Int("V", 1, "Interval each Indication")
 	kafkaBroker := flag.String("k", "", "Kafka broker")
 	o.Mode = DEFAULT
+	debg := flag.String("d", "DEBUG", "Debug Level(TRACE DEBUG INFO WARN ERROR)")
 	flag.Parse()
 	if *modeopt == "aaa" {
 		o.Mode = AAA
 	} else if *modeopt == "both" {
 		o.Mode = BOTH
 	}
+	o.Debuglvl = *debg
 	o.oltid = uint32(*oltid)
 	o.npon = uint32(*npon)
 	o.nonus = uint32(*nonus)

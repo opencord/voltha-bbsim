@@ -32,10 +32,21 @@ func Setup(kafkaBroker string, level string) {
 	//logger.SetReportCaller(true)
 	myLogger = logger.WithField("topics", []string{"bbsim.log"})
 
-	// TODO make this configurable via cli arg
-	if level == "DEBUG" {
-		logger.SetLevel(log.DebugLevel)
+	var logLevel log.Level = log.DebugLevel
+	switch level{
+		case "TRACE":
+			logLevel = log.TraceLevel
+		case "INFO":
+			logLevel = log.InfoLevel
+		case "WARN":
+			logLevel = log.WarnLevel
+		case "ERROR":
+			logLevel = log.ErrorLevel
+		default:
+			logLevel = log.DebugLevel
 	}
+	logger.Println("Setting Log Level ", logLevel)
+	logger.SetLevel(logLevel)
 
 	if len(kafkaBroker) > 0 {
 		myLogger.Debug("Setting up kafka integration")

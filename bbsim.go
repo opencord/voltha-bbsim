@@ -37,7 +37,7 @@ func main() {
 	// CLI Shows up
 	printBanner()
 	opt := core.GetOptions()
-	logger.Setup(opt.KafkaBroker, "DEBUG")
+	logger.Setup(opt.KafkaBroker, opt.Debuglvl)
 
 	mediator := core.NewMediator(opt)
 
