@@ -20,12 +20,11 @@ import (
 	"context"
 
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"gerrit.opencord.org/voltha-bbsim/device"
 	"gerrit.opencord.org/voltha-bbsim/protos"
 	omci "github.com/opencord/omci-sim"
 )
 
-func RunOmciResponder(ctx context.Context, omciOut chan openolt.OmciMsg, omciIn chan openolt.OmciIndication, onumap map[uint32][]*device.Onu, errch chan error) {
+func RunOmciResponder(ctx context.Context, omciOut chan openolt.OmciMsg, omciIn chan openolt.OmciIndication, errch chan error) {
 	go func() {
 		defer logger.Debug("Omci response process was done")
 

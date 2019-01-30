@@ -63,11 +63,25 @@ type Server struct {
 	stateRepCh   chan stateReport
 	omciIn       chan openolt.OmciIndication
 	omciOut      chan openolt.OmciMsg
+	eapolIn      chan *EAPByte
+	eapolOut     chan *EAPPkt
 }
 
 type Packet struct {
 	Info *Ioinfo
 	Pkt  gopacket.Packet
+}
+
+type EAPByte struct {
+	IntfId uint32
+	OnuId  uint32
+	Byte []byte
+}
+
+type EAPPkt struct {
+	IntfId uint32
+	OnuId  uint32
+	Pkt gopacket.Packet
 }
 
 type stateReport struct {
@@ -94,6 +108,8 @@ func NewCore(opt *option) *Server {
 		stateRepCh:   make(chan stateReport, 8),
 		omciIn:       make(chan openolt.OmciIndication, 1024),
 		omciOut:      make(chan openolt.OmciMsg, 1024),
+		eapolIn:      make(chan *EAPByte, 1024),
+		eapolOut:     make(chan *EAPPkt, 1024),
 	}
 
 	nnni := s.Olt.NumNniIntf
@@ -338,21 +354,39 @@ func (s *Server) runPktLoops(ctx context.Context, stream openolt.Openolt_EnableI
 	logger.Debug("runPacketPktLoops Start")
 	defer logger.Debug("runPacketLoops Done")
 
-	errch := make(chan error)
-	RunOmciResponder(ctx, s.omciOut, s.omciIn, s.Onumap, errch)
+	errchOmci := make(chan error)
+	RunOmciResponder(ctx, s.omciOut, s.omciIn, errchOmci)
 	eg, child := errgroup.WithContext(ctx)
 	child, cancel := context.WithCancel(child)
+
+	errchEapol := make(chan error)
+	RunEapolResponder(ctx, s.eapolOut, s.eapolIn, errchEapol)
 
 	eg.Go(func() error {
 		logger.Debug("runOMCIResponder Start")
 		defer logger.Debug("runOMCIResponder Done")
 		select {
-		case v, ok := <-errch: // Wait for OmciInitialization
+		case v, ok := <-errchOmci: // Wait for OmciInitialization
 			if ok { //Error
 				logger.Error("Error happend in Omci:%s", v)
 				return v
 			} else { //Close
 				s.updateDevIntState(s.Olt, device.OLT_ACTIVE)
+			}
+		case <-child.Done():
+			return nil
+		}
+		return nil
+	})
+
+	eg.Go(func() error {
+		logger.Debug("runEapolResponder Start")
+		defer logger.Debug("runEapolResponder Done")
+		select {
+		case v, ok := <-errchEapol:
+			if ok { //Error
+				logger.Error("Error happend in Eapol:%s", v)
+				return v
 			}
 		case <-child.Done():
 			return nil
@@ -411,6 +445,22 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 			if err := stream.Send(&openolt.Indication{Data: omci}); err != nil {
 				logger.Error("send omci indication failed.", err)
 				continue
+			}
+		case msg := <- s.eapolIn:
+			intfid := msg.IntfId
+			onuid := msg.OnuId
+			gemid, err := getGemPortID(intfid, onuid)
+			if err != nil {
+				logger.Error("Failed to getGemPortID intfid:%d onuid:%d", intfid, onuid)
+				continue
+			}
+
+			logger.Debug("OLT %d send eapol packet out (upstream), IF %v (ONU-ID: %v) pkt:%x.", s.Olt.ID, intfid, onuid)
+
+			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "pon", IntfId: intfid, GemportId: gemid, Pkt: msg.Byte}}
+			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
+				logger.Error("Fail to send EAPOL PktInd indication.", err)
+				return err
 			}
 		case unipkt := <-unichannel:
 			onuid := unipkt.Info.onuid
@@ -506,6 +556,9 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 		ethtype := pkt.EthernetType
 		if ethtype == layers.EthernetTypeEAPOL {
 			utils.LoggerWithOnu(onu).Info("Received downstream packet is EAPOL.")
+			eapolPkt := EAPPkt{IntfId:intfid, OnuId:onuid, Pkt: rawpkt}
+			s.eapolOut <- &eapolPkt
+			return nil
 		} else if layerDHCP := rawpkt.Layer(layers.LayerTypeDHCPv4); layerDHCP != nil {
 			utils.LoggerWithOnu(onu).WithFields(log.Fields{
 				"payload": layerDHCP.LayerPayload(),

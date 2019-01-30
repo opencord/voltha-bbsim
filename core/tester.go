@@ -290,10 +290,15 @@ func killProcess(name string) error {
 }
 
 func activateWPASupplicant(univeth UniVeth, s *Server) (err error) {
+	/*
 	cmd := "/sbin/wpa_supplicant"
 	conf := "/etc/wpa_supplicant/wpa_supplicant.conf"
 	err = exec.Command(cmd, "-D", "wired", "-i", univeth.Veth, "-c", conf).Start()
+	*/
 	onu, _ := s.GetOnuByID(univeth.OnuId)
+	if err = startPeer(onu.IntfID, onu.OnuID); err != nil {
+		logger.Error("%s", err)
+	}
 	if err != nil {
 		utils.LoggerWithOnu(onu).WithFields(log.Fields{
 			"err":  err,
@@ -307,12 +312,12 @@ func activateWPASupplicant(univeth UniVeth, s *Server) (err error) {
 
 func activateDHCPClient(univeth UniVeth, s *Server) (err error) {
 	onu, _ := s.GetOnuByID(univeth.OnuId)
-
 	cmd := exec.Command("/usr/local/bin/dhclient", univeth.Veth)
 	if err := cmd.Start(); err != nil {
 		logger.Error("Fail to activateDHCPClient() for: %s", univeth.Veth)
 		logger.Panic("activateDHCPClient %s", err)
 	}
+
 	utils.LoggerWithOnu(onu).WithFields(log.Fields{
 		"veth": univeth.Veth,
 	}).Infof("activateDHCPClient() start for: %s", univeth.Veth)
