@@ -56,7 +56,7 @@ func GetOptions() *option {
 	modeopt := flag.String("m", "default", "Emulation mode (default, aaa, both (aaa & dhcp))")
 	aaawait := flag.Int("aw", 10, "Wait time (sec) for activation WPA supplicants")
 	dhcpwait := flag.Int("dw", 20, "Wait time (sec) for activation DHCP clients")
-	dhcpservip := flag.String("s", "182.21.0.1", "DHCP Server IP Address")
+	dhcpservip := flag.String("s", "182.21.0.128", "DHCP Server IP Address")
 	intvl := flag.Int("v", 1, "Interval each Indication")
 	intvl_test := flag.Int("V", 1, "Interval each Indication")
 	kafkaBroker := flag.String("k", "", "Kafka broker")

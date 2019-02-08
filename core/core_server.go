@@ -65,6 +65,8 @@ type Server struct {
 	omciOut      chan openolt.OmciMsg
 	eapolIn      chan *byteMsg
 	eapolOut     chan *byteMsg
+	dhcpIn       chan *byteMsg
+	dhcpOut      chan *byteMsg
 }
 
 type Packet struct {
@@ -104,6 +106,8 @@ func NewCore(opt *option) *Server {
 		omciOut:      make(chan openolt.OmciMsg, 1024),
 		eapolIn:      make(chan *byteMsg, 1024),
 		eapolOut:     make(chan *byteMsg, 1024),
+		dhcpIn:      make(chan *byteMsg, 1024),
+		dhcpOut:     make(chan *byteMsg, 1024),
 	}
 
 	nnni := s.Olt.NumNniIntf
@@ -356,6 +360,9 @@ func (s *Server) runPktLoops(ctx context.Context, stream openolt.Openolt_EnableI
 	errchEapol := make(chan error)
 	RunEapolResponder(ctx, s.eapolOut, s.eapolIn, errchEapol)
 
+	errchDhcp := make(chan error)
+	RunDhcpResponder(ctx, s.dhcpOut, s.dhcpIn, errchDhcp)
+
 	eg.Go(func() error {
 		logger.Debug("runOMCIResponder Start")
 		defer logger.Debug("runOMCIResponder Done")
@@ -380,6 +387,21 @@ func (s *Server) runPktLoops(ctx context.Context, stream openolt.Openolt_EnableI
 		case v, ok := <-errchEapol:
 			if ok { //Error
 				logger.Error("Error happend in Eapol:%s", v)
+				return v
+			}
+		case <-child.Done():
+			return nil
+		}
+		return nil
+	})
+
+	eg.Go(func() error {
+		logger.Debug("runDhcpResponder Start")
+		defer logger.Debug("runDhcpResponder Done")
+		select {
+		case v, ok := <-errchDhcp:
+			if ok { //Error
+				logger.Error("Error happend in Dhcp:%s", v)
 				return v
 			}
 		case <-child.Done():
@@ -456,6 +478,49 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 				logger.Error("Fail to send EAPOL PktInd indication.", err)
 				return err
 			}
+		case msg := <- s.dhcpIn:	//TODO: We should put omciIn, eapolIn, dhcpIn toghether
+			intfid := msg.IntfId
+			onuid := msg.OnuId
+			gemid, err := getGemPortID(intfid, onuid)
+			bytes := msg.Byte
+			pkt := gopacket.NewPacket(bytes, layers.LayerTypeEthernet, gopacket.Default)
+
+			if err != nil {
+				logger.Error("Failed to getGemPortID intfid:%d onuid:%d", intfid, onuid)
+				continue
+			}
+			/*
+			onu, err := s.GetOnuByID(onuid)
+			if err != nil {
+				logger.Error("Failed to GetOnuByID:%d", onuid)
+				continue
+			}
+			sn := convB2S(onu.SerialNumber.VendorSpecific)
+			if ctag, ok := s.CtagMap[sn]; ok == true {
+				tagpkt, err := PushVLAN(pkt, uint16(ctag), onu)
+				if err != nil {
+					utils.LoggerWithOnu(onu).WithFields(log.Fields{
+						"gemId": gemid,
+					}).Error("Fail to tag C-tag")
+				} else {
+					pkt = tagpkt
+				}
+			} else {
+				utils.LoggerWithOnu(onu).WithFields(log.Fields{
+					"gemId":   gemid,
+					"cTagMap": s.CtagMap,
+				}).Error("Could not find onuid in CtagMap", onuid, sn, s.CtagMap)
+			}
+			*/
+			logger.Debug("OLT %d send dhcp packet in (upstream), IF %v (ONU-ID: %v) pkt:%x.", s.Olt.ID, intfid, onuid)
+			logger.Debug(pkt.Dump())
+
+			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "pon", IntfId: intfid, GemportId: gemid, Pkt: msg.Byte}}
+			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
+				logger.Error("Fail to send DHCP PktInd indication.", err)
+				return err
+			}
+
 		case unipkt := <-unichannel:
 			onuid := unipkt.Info.onuid
 			onu, _ := s.GetOnuByID(onuid)
@@ -527,7 +592,6 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 			utils.LoggerWithOnu(onu).Info("Received packet from NNI in grpc Server.")
 			intfid := nnipkt.Info.intfid
 			pkt := nnipkt.Pkt
-			utils.LoggerWithOnu(onu).Info("sendPktInd - NNI Packet")
 			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "nni", IntfId: intfid, Pkt: pkt.Data()}}
 			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
 				logger.Error("Fail to send PktInd indication.", err)
@@ -561,6 +625,10 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 			}).Info("Received downstream packet is DHCP.")
 			rawpkt, _, _ = PopVLAN(rawpkt)
 			rawpkt, _, _ = PopVLAN(rawpkt)
+			logger.Debug("%s", rawpkt.Dump())
+			dhcpPkt := byteMsg{IntfId:intfid, OnuId:onuid, Byte: rawpkt.Data()}
+			s.dhcpOut <- &dhcpPkt
+			return nil
 		} else {
 			utils.LoggerWithOnu(onu).Info("WARNING: Received packet is not EAPOL or DHCP")
 			return nil
@@ -589,6 +657,7 @@ func (s *Server) uplinkPacketOut(rawpkt gopacket.Packet) error {
 		return err
 	}
 	handle := ioinfo.handler
+	logger.Debug("%s", poppkt.Dump())
 	SendNni(handle, poppkt)
 	return nil
 }

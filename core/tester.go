@@ -312,11 +312,15 @@ func activateWPASupplicant(univeth UniVeth, s *Server) (err error) {
 
 func activateDHCPClient(univeth UniVeth, s *Server) (err error) {
 	onu, _ := s.GetOnuByID(univeth.OnuId)
+	if err = startDHCPClient(onu.IntfID, onu.OnuID); err != nil {
+		logger.Error("%s", err)
+	}
+	/*
 	cmd := exec.Command("/usr/local/bin/dhclient", univeth.Veth)
 	if err := cmd.Start(); err != nil {
 		logger.Error("Fail to activateDHCPClient() for: %s", univeth.Veth)
 		logger.Panic("activateDHCPClient %s", err)
-	}
+	}*/
 
 	utils.LoggerWithOnu(onu).WithFields(log.Fields{
 		"veth": univeth.Veth,
@@ -324,7 +328,7 @@ func activateDHCPClient(univeth UniVeth, s *Server) (err error) {
 	return
 }
 
-func activateDHCPServer(veth string, serverip string) error {
+func activateDHCPServer (veth string, serverip string) error {
 	err := exec.Command("ip", "addr", "add", serverip, "dev", veth).Run()
 	if err != nil {
 		logger.Error("Fail to add ip to %s address: %s", veth, err)
@@ -337,7 +341,8 @@ func activateDHCPServer(veth string, serverip string) error {
 	}
 	cmd := "/usr/local/bin/dhcpd"
 	conf := "/etc/dhcp/dhcpd.conf"
-	err = exec.Command(cmd, "-cf", conf, veth).Run()
+	logfile := "/tmp/dhcplog"
+	err = exec.Command(cmd, "-cf", conf, veth, "-tf", logfile).Run()
 	if err != nil {
 		logger.Error("Fail to activateDHCP Server (): %s", err)
 		return err
