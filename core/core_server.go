@@ -63,8 +63,8 @@ type Server struct {
 	stateRepCh   chan stateReport
 	omciIn       chan openolt.OmciIndication
 	omciOut      chan openolt.OmciMsg
-	eapolIn      chan *EAPByte
-	eapolOut     chan *EAPPkt
+	eapolIn      chan *byteMsg
+	eapolOut     chan *byteMsg
 }
 
 type Packet struct {
@@ -72,16 +72,10 @@ type Packet struct {
 	Pkt  gopacket.Packet
 }
 
-type EAPByte struct {
+type byteMsg struct {
 	IntfId uint32
 	OnuId  uint32
 	Byte []byte
-}
-
-type EAPPkt struct {
-	IntfId uint32
-	OnuId  uint32
-	Pkt gopacket.Packet
 }
 
 type stateReport struct {
@@ -108,8 +102,8 @@ func NewCore(opt *option) *Server {
 		stateRepCh:   make(chan stateReport, 8),
 		omciIn:       make(chan openolt.OmciIndication, 1024),
 		omciOut:      make(chan openolt.OmciMsg, 1024),
-		eapolIn:      make(chan *EAPByte, 1024),
-		eapolOut:     make(chan *EAPPkt, 1024),
+		eapolIn:      make(chan *byteMsg, 1024),
+		eapolOut:     make(chan *byteMsg, 1024),
 	}
 
 	nnni := s.Olt.NumNniIntf
@@ -455,7 +449,7 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 				continue
 			}
 
-			logger.Debug("OLT %d send eapol packet out (upstream), IF %v (ONU-ID: %v) pkt:%x.", s.Olt.ID, intfid, onuid)
+			logger.Debug("OLT %d send eapol packet in (upstream), IF %v (ONU-ID: %v) pkt:%x.", s.Olt.ID, intfid, onuid)
 
 			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "pon", IntfId: intfid, GemportId: gemid, Pkt: msg.Byte}}
 			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
@@ -522,6 +516,7 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 			}
 
 		case nnipkt := <-nnichannel:
+			logger.Debug("Received packet from NNI")
 			if nnipkt.Info == nil || nnipkt.Info.iotype != "nni" {
 				logger.Debug("WARNING: This packet does not come from NNI ")
 				continue
@@ -556,7 +551,7 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 		ethtype := pkt.EthernetType
 		if ethtype == layers.EthernetTypeEAPOL {
 			utils.LoggerWithOnu(onu).Info("Received downstream packet is EAPOL.")
-			eapolPkt := EAPPkt{IntfId:intfid, OnuId:onuid, Pkt: rawpkt}
+			eapolPkt := byteMsg{IntfId:intfid, OnuId:onuid, Byte: rawpkt.Data()}
 			s.eapolOut <- &eapolPkt
 			return nil
 		} else if layerDHCP := rawpkt.Layer(layers.LayerTypeDHCPv4); layerDHCP != nil {

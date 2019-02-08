@@ -296,7 +296,7 @@ func activateWPASupplicant(univeth UniVeth, s *Server) (err error) {
 	err = exec.Command(cmd, "-D", "wired", "-i", univeth.Veth, "-c", conf).Start()
 	*/
 	onu, _ := s.GetOnuByID(univeth.OnuId)
-	if err = startPeer(onu.IntfID, onu.OnuID); err != nil {
+	if err = startEAPClient(onu.IntfID, onu.OnuID); err != nil {
 		logger.Error("%s", err)
 	}
 	if err != nil {
