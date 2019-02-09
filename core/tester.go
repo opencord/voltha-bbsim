@@ -19,13 +19,12 @@ package core
 import (
 	"context"
 	"os/exec"
-	"sync"
-	"time"
-
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"gerrit.opencord.org/voltha-bbsim/common/utils"
-	log "github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
+	"time"
+	"strconv"
+	"gerrit.opencord.org/voltha-bbsim/device"
+	"fmt"
 )
 
 const (
@@ -36,296 +35,158 @@ const (
 
 type Mode int
 
-type Tester struct {
-	Mode         Mode
-	AAAWait      int
-	DhcpWait     int
+type TestManager struct {
 	DhcpServerIP string
-	Processes    []string
+	Pid          []int
 	Intvl        int
+	testers      map[device.Devkey]*Tester
+	ctx          context.Context
 	cancel       context.CancelFunc
 }
 
-func NewTester(opt *option) *Tester {
-	t := new(Tester)
-	t.AAAWait = opt.aaawait
-	t.DhcpWait = opt.dhcpwait
+type Tester struct {
+	Key device.Devkey
+	Mode Mode
+	ctx          context.Context
+	cancel       context.CancelFunc
+}
+
+func NewTestManager(opt *option) *TestManager {
+	t := new(TestManager)
 	t.DhcpServerIP = opt.dhcpservip
 	t.Intvl = opt.intvl_test
+	return t
+}
+
+func (*TestManager) CreateTester(opt *option, key device.Devkey) *Tester{
+	logger.Debug("CreateTester() called")
+	t := new(Tester)
 	t.Mode = opt.Mode
+	t.Key = key
 	return t
 }
 
 //Blocking
-func (t *Tester) Start(s *Server) error {
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
-	t.cancel = cancel
-	defer func() {
-		cancel()
-		t.Initialize()
-		logger.Debug("Tester Done")
-	}()
-	logger.Info("Tester Run() start")
+func (tm *TestManager) Start() error {
+	ctx, cancel := context.WithCancel(context.Background())
+	tm.ctx = ctx
+	tm.cancel = cancel
+	tm.testers = map[device.Devkey]*Tester{}
+	logger.Info("TestManager start")
+	return nil
+}
+
+func (tm *TestManager) Stop() error {
+	if tm.cancel != nil {
+		tm.cancel()
+	}
+	tm.Initialize()
+	logger.Debug("TestManager Done")
+	return nil
+}
+
+func (tm *TestManager) StartTester (key device.Devkey, t *Tester) error {
+	logger.Debug("StartTester called with key:%v", key)
 	if t.Mode == DEFAULT {
 		//Empty
 	} else if t.Mode == AAA || t.Mode == BOTH {
-		eg, child := errgroup.WithContext(ctx)
+		eg, child := errgroup.WithContext(tm.ctx)
 		child, cancel := context.WithCancel(child)
+		t.ctx = child
+		t.cancel = cancel
 		eg.Go(func() error {
-			defer func() {
-				logger.Debug("exeAAATest Done")
-			}()
-			err := t.exeAAATest(child, s, t.AAAWait)
-			return err
+			err := activateWPASupplicant(key)
+			if err != nil {
+				return err
+			}
+			return nil
 		})
 
 		if t.Mode == BOTH {
+			waitForDHCP := 3
 			eg.Go(func() error {
+				tick := time.NewTicker(time.Second)
+				counter := 0
 				defer func() {
+					tick.Stop()
 					logger.Debug("exeDHCPTest Done")
 				}()
 
-				err := t.exeDHCPTest(ctx, s, t.DhcpWait)
-				return err
+			L:
+				for counter < waitForDHCP {
+					select{
+					case <-tick.C:
+						counter ++
+						if counter == waitForDHCP {	// TODO: This should be fixed
+							break L
+						}
+					case <-child.Done():
+						return nil
+					}
+				}
+				err := activateDHCPClient(key)
+				if err != nil {
+					return err
+				}
+				return nil
 			})
 		}
 		if err := eg.Wait(); err != nil {
-			logger.Error("Error happened in tester: %s", err)
-			cancel()
 			return err
-		} else {
-			logger.Debug("Test successfully finished")
 		}
 	}
+	tm.testers[key] = t
 	return nil
 }
 
-func (t *Tester) Stop(s *Server) error {
-	if t.cancel != nil {
-		t.cancel()
-	}
+func (tm *TestManager) StopTester (key device.Devkey) error {
+	ts := tm.testers[key]
+	ts.cancel()
+	delete(tm.testers, key)
 	return nil
 }
 
-func (t *Tester) Initialize() {
-	logger.Info("Tester Initialize () called")
-	processes := t.Processes
-	logger.Debug("Runnig Process: %s", processes)
-	KillProcesses(processes)
+func (tm *TestManager) Initialize() {
+	logger.Info("TestManager Initialize () called")
+	pids := tm.Pid
+	logger.Debug("Runnig Process: %v", pids)
+	KillProcesses(pids)
 	exec.Command("rm", "/var/run/dhcpd.pid").Run()    //This is for DHCP server activation
 	exec.Command("touch", "/var/run/dhcpd.pid").Run() //This is for DHCP server activation
 }
 
-type UniVeth struct {
-	OnuId uint32
-	Veth  string
-}
-
-func (t *Tester) exeAAATest(ctx context.Context, s *Server, wait int) error {
-	tick := time.NewTicker(time.Second)
-	defer tick.Stop()
-	logger.Info("exeAAATest stands by....")
-	infos, err := s.GetUniIoinfos("outside")
-	if err != nil {
-		return err
-	}
-
-	univeths := []UniVeth{}
-	for _, info := range infos {
-		uv := UniVeth{
-			OnuId: info.onuid,
-			Veth:  info.Name,
-		}
-		univeths = append(univeths, uv)
-	}
-
-	for sec := 1; sec <= wait; sec++ {
-		select {
-		case <-ctx.Done():
-			logger.Debug("exeAAATest thread receives close ")
-			return nil
-		case <-tick.C:
-			logger.WithField("seconds", wait-sec).Info("exeAAATest stands by ... ", wait-sec)
-			if sec == wait {
-				wg := sync.WaitGroup{}
-				wg.Add(1)
-				go func() error {
-					defer wg.Done()
-					err = activateWPASups(ctx, univeths, t.Intvl, s)
-					if err != nil {
-						return err
-					}
-					logger.Info("WPA supplicants are successfully activated ")
-					t.Processes = append(t.Processes, "wpa_supplicant")
-					logger.Debug("Running Process:%s", t.Processes)
-					return nil
-				}()
-				wg.Wait()
-			}
-		}
-	}
-	return nil
-}
-
-func (t *Tester) exeDHCPTest(ctx context.Context, s *Server, wait int) error {
-	tick := time.NewTicker(time.Second)
-	defer tick.Stop()
-	logger.Info("exeDHCPTest stands by....")
-	info, err := s.IdentifyNniIoinfo("outside")
-	if err != nil {
-		return err
-	}
-
-	err = activateDHCPServer(info.Name, t.DhcpServerIP)
-	if err != nil {
-		return err
-	}
-	t.Processes = append(t.Processes, "dhcpd")
-	logger.Debug("Running Process:%s", t.Processes)
-
-	infos, err := s.GetUniIoinfos("outside")
-	if err != nil {
-		return err
-	}
-
-	univeths := []UniVeth{}
-	for _, info := range infos {
-		uv := UniVeth{
-			OnuId: info.onuid,
-			Veth:  info.Name,
-		}
-		univeths = append(univeths, uv)
-	}
-
-	for sec := 1; sec <= wait; sec++ {
-		select {
-		case <-ctx.Done():
-			logger.Debug("exeDHCPTest thread receives close ")
-			return nil
-		case <-tick.C:
-			logger.WithField("seconds", wait-sec).Info("exeDHCPTest stands by ... ", wait-sec)
-			if sec == wait {
-				wg := sync.WaitGroup{}
-				wg.Add(1)
-				go func() error {
-					defer wg.Done()
-					err = activateDHCPClients(ctx, univeths, t.Intvl, s)
-					if err != nil {
-						return err
-					}
-					logger.WithFields(log.Fields{
-						"univeths": univeths,
-					}).Info("DHCP clients are successfully activated")
-					t.Processes = append(t.Processes, "dhclient")
-					logger.Debug("Running Process: ", t.Processes)
-					return nil
-				}()
-				wg.Wait()
-			}
-		}
-	}
-	return nil
-}
-
-func KillProcesses(pnames []string) error {
-	for _, pname := range pnames {
+func KillProcesses(pids []int) error {
+	for _, pname := range pids {
 		killProcess(pname)
 	}
 	return nil
 }
 
-func activateWPASups(ctx context.Context, vethnames []UniVeth, intvl int, s *Server) error {
-	tick := time.NewTicker(time.Duration(intvl) * time.Second)
-	defer tick.Stop()
-	i := 0
-	for {
-		select {
-		case <-tick.C:
-			if i < len(vethnames) {
-				vethname := vethnames[i]
-				if err := activateWPASupplicant(vethname, s); err != nil {
-					return err
-				}
-				i++
-			}
-		case <-ctx.Done():
-			logger.Debug("activateWPASups was canceled by context.")
-			return nil
-		}
-	}
-	return nil
-}
-
-func activateDHCPClients(ctx context.Context, vethnames []UniVeth, intvl int, s *Server) error {
-	tick := time.NewTicker(time.Duration(intvl) * time.Second)
-	defer tick.Stop()
-	i := 0
-	for {
-		select {
-		case <-tick.C:
-			if i < len(vethnames) {
-				vethname := vethnames[i]
-				if err := activateDHCPClient(vethname, s); err != nil {
-					return err
-				}
-				i++
-			}
-		case <-ctx.Done():
-			logger.Debug("activateDHCPClients was canceled by context.")
-			return nil
-		}
-	}
-	return nil
-}
-
-func killProcess(name string) error {
-	err := exec.Command("pkill", name).Run()
+func killProcess(pid int) error {
+	err := exec.Command("kill", strconv.Itoa(pid)).Run()
 	if err != nil {
-		logger.Error("Fail to pkill %s: %v", name, err)
+		logger.Error("Fail to kill %d: %v", pid, err)
 		return err
 	}
-	logger.Info("Successfully killed %s", name)
+	logger.Info("Successfully killed %d", pid)
 	return nil
 }
 
-func activateWPASupplicant(univeth UniVeth, s *Server) (err error) {
-	/*
-	cmd := "/sbin/wpa_supplicant"
-	conf := "/etc/wpa_supplicant/wpa_supplicant.conf"
-	err = exec.Command(cmd, "-D", "wired", "-i", univeth.Veth, "-c", conf).Start()
-	*/
-	onu, _ := s.GetOnuByID(univeth.OnuId)
-	if err = startEAPClient(onu.IntfID, onu.OnuID); err != nil {
-		logger.Error("%s", err)
+func activateWPASupplicant(key device.Devkey) (err error) {
+	if err = startEAPClient(key.Intfid, key.ID); err != nil {
+		errmsg := fmt.Sprintf("Failed to activate WPA Supplicant intfid: %d onuid: %d", key.Intfid, key.ID)
+		logger.Error(errmsg)
 	}
-	if err != nil {
-		utils.LoggerWithOnu(onu).WithFields(log.Fields{
-			"err":  err,
-			"veth": univeth.Veth,
-		}).Error("Fail to activateWPASupplicant()", err)
-		return
-	}
-	logger.Info("activateWPASupplicant() for :%s", univeth.Veth)
-	return
+	logger.Info("Successfuly activateWPASupplicant() for intfid:%d onuid:%d", key.Intfid, key.ID)
+	return nil
 }
 
-func activateDHCPClient(univeth UniVeth, s *Server) (err error) {
-	onu, _ := s.GetOnuByID(univeth.OnuId)
-	if err = startDHCPClient(onu.IntfID, onu.OnuID); err != nil {
-		logger.Error("%s", err)
+func activateDHCPClient(key device.Devkey) (err error) {
+	if err = startDHCPClient(key.Intfid, key.ID); err != nil {
+		errmsg := fmt.Sprintf("Failed to activate DHCP client intfid: %d onuid: %d", key.Intfid, key.ID)
+		logger.Error(errmsg)
 	}
-	/*
-	cmd := exec.Command("/usr/local/bin/dhclient", univeth.Veth)
-	if err := cmd.Start(); err != nil {
-		logger.Error("Fail to activateDHCPClient() for: %s", univeth.Veth)
-		logger.Panic("activateDHCPClient %s", err)
-	}*/
-
-	utils.LoggerWithOnu(onu).WithFields(log.Fields{
-		"veth": univeth.Veth,
-	}).Infof("activateDHCPClient() start for: %s", univeth.Veth)
-	return
+	return nil
 }
 
 func activateDHCPServer (veth string, serverip string) error {

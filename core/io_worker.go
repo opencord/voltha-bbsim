@@ -145,15 +145,9 @@ func getMacAddress(ifName string) net.HardwareAddr {
 	return hwAddr
 }
 
-func makeUniName(oltid uint32, intfid uint32, onuid uint32) (upif string, dwif string) {
-	upif = UNI_VETH_UP_PFX + strconv.Itoa(int(oltid)) + "_" + strconv.Itoa(int(intfid)) + "_" + strconv.Itoa(int(onuid))
-	dwif = UNI_VETH_DW_PFX + strconv.Itoa(int(oltid)) + "_" + strconv.Itoa(int(intfid)) + "_" + strconv.Itoa(int(onuid))
-	return
-}
-
 func makeNniName(oltid uint32) (upif string, dwif string) {
-	upif = NNI_VETH_UP_PFX + strconv.Itoa(int(oltid))
-	dwif = NNI_VETH_DW_PFX + strconv.Itoa(int(oltid))
+	upif = NNI_VETH_NORTH_PFX + strconv.Itoa(int(oltid))
+	dwif = NNI_VETH_SOUTH_PFX + strconv.Itoa(int(oltid))
 	return
 }
 

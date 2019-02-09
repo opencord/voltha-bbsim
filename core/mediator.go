@@ -84,16 +84,10 @@ func GetOptions() *option {
 	return o
 }
 
-type handler struct {
-	dst    device.DeviceState
-	src    device.DeviceState
-	method func(s *Server) error
-}
-
 type mediator struct {
-	opt    *option
-	server *Server
-	tester *Tester
+	opt         *option
+	server      *Server
+	testmanager *TestManager
 }
 
 func NewMediator(o *option) *mediator {
@@ -122,12 +116,11 @@ func (m *mediator) Start() {
 		return
 	}()
 
-	tester := NewTester(opt)
+	tm := NewTestManager(opt)
 	m.server = server
-	m.tester = tester
-
+	m.testmanager = tm
 	go func() {
-		m.Mediate(server)
+		m.Mediate()
 	}()
 
 	c := make(chan os.Signal, 1)
@@ -141,8 +134,8 @@ func (m *mediator) Start() {
 			wg.Add(1)
 			fmt.Println("SIGINT", sig)
 			close(c)
-			server.Stop()       //Non-blocking
-			tester.Stop(server) //Non-blocking
+			server.Stop() //Non-blocking
+			tm.Stop()     //Non-blocking
 			return
 		}
 	}()
@@ -150,7 +143,7 @@ func (m *mediator) Start() {
 	logger.Debug("Reach to the end line")
 }
 
-func (m *mediator) Mediate(s *Server) {
+func (m *mediator) Mediate() {
 	defer logger.Debug("Mediate Done")
 	for sr := range m.server.stateRepCh {
 		next := sr.next
@@ -158,35 +151,42 @@ func (m *mediator) Mediate(s *Server) {
 		dev := sr.device
 		if reflect.TypeOf(dev) == reflect.TypeOf(&device.Olt{}){
 			logger.Debug("Received OLT Device %v Current: %d Next: %d", dev, current, next)
-			if err := transitOlt(s, current, next, m.tester, m.opt); err != nil {
+			if err := transitOlt(current, next, m.testmanager, m.opt); err != nil {
 				logger.Error("%v", err)
 			}
 		} else if reflect.TypeOf(dev) == reflect.TypeOf(&device.Onu{}) {
 			logger.Debug("Received ONU Device %v Current: %d Next: %d", dev, current, next)
 			key := dev.GetDevkey()
-			if err := transitOnu(s, key, current, next, m.tester, m.opt); err != nil {
+			if err := transitOnu(key, current, next, m.testmanager, m.opt); err != nil {
 				logger.Error("%v", err)
 			}
 		}
 	}
 }
 
-func transitOlt (s *Server, current device.DeviceState, next device.DeviceState, tester *Tester, o *option) error {
+func transitOlt (current device.DeviceState, next device.DeviceState, tm *TestManager, o *option) error {
+	logger.Debug("trnsitOlt called current:%d , next:%d", current, next)
 	if current == device.OLT_PREACTIVE && next == device.OLT_ACTIVE {
-
+		tm.Start()
+		activateDHCPServer("nni_north0", o.dhcpservip)
 	} else if current == device.OLT_ACTIVE && next == device.OLT_PREACTIVE{
-		tester.Stop(s)
+		tm.Stop()
 	}
 	return nil
 }
 
-func transitOnu (s *Server, key device.Devkey, current device.DeviceState, next device.DeviceState, tester *Tester, o *option) error {
+func transitOnu (key device.Devkey, current device.DeviceState, next device.DeviceState, tm *TestManager, o *option) error {
+	logger.Debug("trnsitOnu called with key:%s,  current:%d , next:%d", key, current, next)
 	if current == device.ONU_ACTIVE && next == device.ONU_OMCIACTIVE {
-		if s.isAllOnuOmciActive(){	//TODO: This should be per-ONU control, not by cheking All ONU's status
-			tester.Start(s)
+		t := tm.CreateTester(o, key)
+		if err := tm.StartTester(key, t); err != nil {
+			logger.Error("Cannot Start Executer error:%v", err)
 		}
 	} else if (current == device.ONU_OMCIACTIVE || current == device.ONU_ACTIVE) &&
 		next == device.ONU_INACTIVE {
+		if err := tm.StopTester(key); err != nil {
+			logger.Error("Cannot Start Executer error:%v", err)
+		}
 	}
 	return nil
 }

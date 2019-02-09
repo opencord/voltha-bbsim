@@ -56,21 +56,6 @@ func (s *Server) IdentifyNniIoinfo(ioloc string) (*Ioinfo, error) {
 	return nil, err
 }
 
-func (s *Server) GetUniIoinfos(ioloc string) ([]*Ioinfo, error) {
-	ioinfos := []*Ioinfo{}
-	for _, ioinfo := range s.Ioinfos {
-		if ioinfo.iotype == "uni" && ioinfo.ioloc == ioloc {
-			ioinfos = append(ioinfos, ioinfo)
-		}
-	}
-	if len(ioinfos) == 0 {
-		err := errors.New("No matched Ioinfo is found")
-		logger.Error("GetUniIoinfos %s", err)
-		return nil, err
-	}
-	return ioinfos, nil
-}
-
 func CreateVethPairs(veth1 string, veth2 string) (err error) {
 	err = exec.Command("ip", "link", "add", veth1, "type", "veth", "peer", "name", veth2).Run()
 	if err != nil {

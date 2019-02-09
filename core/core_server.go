@@ -39,11 +39,9 @@ import (
 )
 
 const (
-	UNI_VETH_UP_PFX  = "sim_uu"
-	UNI_VETH_DW_PFX  = "sim_ud"
-	NNI_VETH_UP_PFX  = "sim_nu"
-	NNI_VETH_DW_PFX  = "sim_nd"
-	MAX_ONUS_PER_PON = 64 // This value should be the same with the value in AdapterPlatrorm class
+	NNI_VETH_NORTH_PFX = "nni_north"
+	NNI_VETH_SOUTH_PFX = "nni_south"
+	MAX_ONUS_PER_PON   = 64 // This value should be the same with the value in AdapterPlatrorm class
 )
 
 type Server struct {
@@ -202,6 +200,7 @@ func (s *Server) Disable() {
 }
 
 func (s *Server) updateDevIntState(dev device.Device, state device.DeviceState) {
+	logger.Debug("updateDevIntState called state:%d", state)
 	current := dev.GetIntState()
 	dev.UpdateIntState(state)
 	s.stateRepCh <- stateReport{device: dev, current: current, next: state}
@@ -286,7 +285,7 @@ func (s *Server) StartPktLoops(ctx context.Context, stream openolt.Openolt_Enabl
 		logger.Debug("StartPktLoops () Done")
 	}()
 	s.wg.Add(1)
-	ioinfos, veths, err := createIoinfos(s.Olt.ID, s.Vethnames, s.Onumap)
+	ioinfos, veths, err := createIoinfos(s.Olt.ID, s.Vethnames)
 	if err != nil {
 		logger.Error("createIoinfos failed.", err)
 		return err
@@ -314,25 +313,9 @@ func (s *Server) StopPktLoops() {
 	}
 }
 
-func createIoinfos(oltid uint32, Vethnames []string, onumap map[uint32][]*device.Onu) ([]*Ioinfo, []string, error) {
+func createIoinfos(oltid uint32, Vethnames []string) ([]*Ioinfo, []string, error) {
 	ioinfos := []*Ioinfo{}
 	var err error
-	for intfid, _ := range onumap {
-		for i := 0; i < len(onumap[intfid]); i++ {
-			var handler *pcap.Handle
-			onuid := onumap[intfid][i].OnuID
-			uniup, unidw := makeUniName(oltid, intfid, onuid)
-			if handler, Vethnames, err = setupVethHandler(uniup, unidw, Vethnames); err != nil {
-				logger.Error("setupVethHandler failed (onuid: %d)", onuid, err)
-				return ioinfos, Vethnames, err
-			}
-			iinfo := Ioinfo{Name: uniup, iotype: "uni", ioloc: "inside", intfid: intfid, onuid: onuid, handler: handler}
-			ioinfos = append(ioinfos, &iinfo)
-			oinfo := Ioinfo{Name: unidw, iotype: "uni", ioloc: "outside", intfid: intfid, onuid: onuid, handler: nil}
-			ioinfos = append(ioinfos, &oinfo)
-		}
-	}
-
 	var handler *pcap.Handle
 	nniup, nnidw := makeNniName(oltid)
 	if handler, Vethnames, err = setupVethHandler(nniup, nnidw, Vethnames); err != nil {
@@ -371,8 +354,6 @@ func (s *Server) runPktLoops(ctx context.Context, stream openolt.Openolt_EnableI
 			if ok { //Error
 				logger.Error("Error happend in Omci:%s", v)
 				return v
-			} else { //Close
-				s.updateDevIntState(s.Olt, device.OLT_ACTIVE)
 			}
 		case <-child.Done():
 			return nil
@@ -423,25 +404,10 @@ func (s *Server) runPktLoops(ctx context.Context, stream openolt.Openolt_EnableI
 }
 
 func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_EnableIndicationServer) error {
-	unichannel := make(chan Packet, 2048)
+	logger.Debug("runMainPktLoop Start")
 	defer func() {
-		close(unichannel)
-		logger.Debug("Closed unichannel ")
 		logger.Debug("runMainPktLoop Done")
 	}()
-	for intfid, _ := range s.Onumap {
-		for _, onu := range s.Onumap[intfid] {
-			onuid := onu.OnuID
-			ioinfo, err := s.identifyUniIoinfo("inside", intfid, onuid)
-			if err != nil {
-				utils.LoggerWithOnu(onu).Error("Fail to identifyUniIoinfo (onuid: %d): %v", onuid, err)
-				return err
-			}
-			uhandler := ioinfo.handler
-			go RecvWorker(ioinfo, uhandler, unichannel)
-		}
-	}
-
 	ioinfo, err := s.IdentifyNniIoinfo("inside")
 	if err != nil {
 		return err
@@ -451,7 +417,9 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 	defer func() {
 		close(nnichannel)
 	}()
-
+	logger.Debug("BEFORE OLT_ACTIVE")
+	s.updateDevIntState(s.Olt, device.OLT_ACTIVE)
+	logger.Debug("AFTER  OLT_ACTIVE")
 	data := &openolt.Indication_PktInd{}
 	for {
 		select {
@@ -518,65 +486,6 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "pon", IntfId: intfid, GemportId: gemid, Pkt: msg.Byte}}
 			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
 				logger.Error("Fail to send DHCP PktInd indication.", err)
-				return err
-			}
-
-		case unipkt := <-unichannel:
-			onuid := unipkt.Info.onuid
-			onu, _ := s.GetOnuByID(onuid)
-			utils.LoggerWithOnu(onu).Debug("Received packet from UNI in grpc Server")
-			if unipkt.Info == nil || unipkt.Info.iotype != "uni" {
-				logger.Debug("WARNING: This packet does not come from UNI ")
-				continue
-			}
-
-			intfid := unipkt.Info.intfid
-			gemid, err := getGemPortID(intfid, onuid)
-			if err != nil {
-				continue
-			}
-			pkt := unipkt.Pkt
-			layerEth := pkt.Layer(layers.LayerTypeEthernet)
-			le, _ := layerEth.(*layers.Ethernet)
-			ethtype := le.EthernetType
-
-			if ethtype == layers.EthernetTypeEAPOL {
-				utils.LoggerWithOnu(onu).WithFields(log.Fields{
-					"gemId": gemid,
-				}).Info("Received upstream packet is EAPOL.")
-			} else if layerDHCP := pkt.Layer(layers.LayerTypeDHCPv4); layerDHCP != nil {
-				utils.LoggerWithOnu(onu).WithFields(log.Fields{
-					"gemId": gemid,
-				}).Info("Received upstream packet is DHCP.")
-
-				//C-TAG
-				sn := convB2S(onu.SerialNumber.VendorSpecific)
-				if ctag, ok := s.CtagMap[sn]; ok == true {
-					tagpkt, err := PushVLAN(pkt, uint16(ctag), onu)
-					if err != nil {
-						utils.LoggerWithOnu(onu).WithFields(log.Fields{
-							"gemId": gemid,
-						}).Error("Fail to tag C-tag")
-					} else {
-						pkt = tagpkt
-					}
-				} else {
-					utils.LoggerWithOnu(onu).WithFields(log.Fields{
-						"gemId":   gemid,
-						"cTagMap": s.CtagMap,
-					}).Error("Could not find onuid in CtagMap", onuid, sn, s.CtagMap)
-				}
-			} else {
-				utils.LoggerWithOnu(onu).WithFields(log.Fields{
-					"gemId": gemid,
-				}).Info("Received upstream packet is of unknow type, skipping.")
-				continue
-			}
-
-			utils.LoggerWithOnu(onu).Info("sendPktInd - UNI Packet")
-			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "pon", IntfId: intfid, GemportId: gemid, Pkt: pkt.Data()}}
-			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-				logger.Error("Fail to send PktInd indication.", err)
 				return err
 			}
 
