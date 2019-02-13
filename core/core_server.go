@@ -457,7 +457,7 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 				logger.Error("Failed to getGemPortID intfid:%d onuid:%d", intfid, onuid)
 				continue
 			}
-			/*
+
 			onu, err := s.GetOnuByID(onuid)
 			if err != nil {
 				logger.Error("Failed to GetOnuByID:%d", onuid)
@@ -479,7 +479,7 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 					"cTagMap": s.CtagMap,
 				}).Error("Could not find onuid in CtagMap", onuid, sn, s.CtagMap)
 			}
-			*/
+
 			logger.Debug("OLT %d send dhcp packet in (upstream), IF %v (ONU-ID: %v) pkt:%x.", s.Olt.ID, intfid, onuid)
 			logger.Debug(pkt.Dump())
 
