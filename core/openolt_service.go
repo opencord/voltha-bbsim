@@ -84,7 +84,7 @@ func sendOnuDiscInd(stream openolt.Openolt_EnableIndicationServer, onus []*devic
 
 func sendOnuInd(stream openolt.Openolt_EnableIndicationServer, onus []*device.Onu, delay int) error {
 	for i, onu := range onus {
-		time.Sleep(time.Duration(delay) * time.Second)
+		time.Sleep(time.Duration(delay) * time.Millisecond)
 		data := &openolt.Indication_OnuInd{&openolt.OnuIndication{IntfId: onu.IntfID, OnuId: onu.OnuID, OperState: "up", AdminState: "up", SerialNumber: onu.SerialNumber}}
 		if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
 			logger.Error("Failed to send ONUInd [id: %d]: %v", i, err)

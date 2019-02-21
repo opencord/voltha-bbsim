@@ -18,6 +18,7 @@ package core
 
 import (
 	"net"
+	"strconv"
 
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
 	"gerrit.opencord.org/voltha-bbsim/common/utils"
@@ -70,6 +71,8 @@ func (s *Server) GetDeviceInfo(c context.Context, empty *openolt.Empty) (*openol
 	devinfo.GemportIdEnd = 65535
 	devinfo.FlowIdStart = 1
 	devinfo.FlowIdEnd = 16383
+	devinfo.DeviceSerialNumber = "BBSIMOLT00"+strconv.FormatInt(int64(s.Olt.ID), 10)
+
 
 	return devinfo, nil
 }
