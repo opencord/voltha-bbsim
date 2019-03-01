@@ -82,16 +82,22 @@ Usage of ./bbsim:
     	IP address:port (default ":50060")
   -aw int
     	Wait time (sec) for activation WPA supplicants (default 10)
+  -d string
+    	Debug Level(TRACE DEBUG INFO WARN ERROR) (default "DEBUG")
   -dw int
     	Wait time (sec) for activation DHCP clients (default 20)
   -i int
     	Number of PON-IF ports (default 1)
   -id int
-    	OLT-ID (default: 0)
+    	OLT-ID
+  -k string
+    	Kafka broker
   -m string
     	Emulation mode (default, aaa, both (aaa & dhcp)) (default "default")
   -n int
     	Number of ONUs per PON-IF port (default 1)
   -s string
-    	DHCP Server IP Address (default "182.21.0.1")
+    	DHCP Server IP Address (default "182.21.0.128")
+  -v int
+    	Interval each Indication (ms) (default 1000)
 ```

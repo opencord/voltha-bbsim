@@ -41,7 +41,6 @@ type option struct {
 	dhcpwait    int
 	dhcpservip  string
 	intvl       int
-	intvl_test  int
 	Mode        Mode
 	KafkaBroker string
 	Debuglvl	string
@@ -57,8 +56,7 @@ func GetOptions() *option {
 	aaawait := flag.Int("aw", 10, "Wait time (sec) for activation WPA supplicants")
 	dhcpwait := flag.Int("dw", 20, "Wait time (sec) for activation DHCP clients")
 	dhcpservip := flag.String("s", "182.21.0.128", "DHCP Server IP Address")
-	intvl := flag.Int("v", 1, "Interval each Indication")
-	intvl_test := flag.Int("V", 1, "Interval each Indication")
+	intvl := flag.Int("v", 1000, "Interval each Indication (ms)")
 	kafkaBroker := flag.String("k", "", "Kafka broker")
 	o.Mode = DEFAULT
 	debg := flag.String("d", "DEBUG", "Debug Level(TRACE DEBUG INFO WARN ERROR)")
@@ -76,7 +74,6 @@ func GetOptions() *option {
 	o.dhcpwait = *dhcpwait
 	o.dhcpservip = *dhcpservip
 	o.intvl = *intvl
-	o.intvl_test = *intvl_test
 	o.KafkaBroker = *kafkaBroker
 	o.address = (strings.Split(*addressport, ":")[0])
 	tmp, _ := strconv.Atoi(strings.Split(*addressport, ":")[1])

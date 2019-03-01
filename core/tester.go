@@ -38,7 +38,6 @@ type Mode int
 type TestManager struct {
 	DhcpServerIP string
 	Pid          []int
-	Intvl        int
 	testers      map[device.Devkey]*Tester
 	ctx          context.Context
 	cancel       context.CancelFunc
@@ -54,7 +53,6 @@ type Tester struct {
 func NewTestManager(opt *option) *TestManager {
 	t := new(TestManager)
 	t.DhcpServerIP = opt.dhcpservip
-	t.Intvl = opt.intvl_test
 	return t
 }
 
