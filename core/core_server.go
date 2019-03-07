@@ -433,7 +433,7 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 		case msg := <- s.eapolIn:
 			intfid := msg.IntfId
 			onuid := msg.OnuId
-			gemid, err := getGemPortID(intfid, onuid)
+			gemid, err := s.getGemPortID(intfid, onuid)
 			if err != nil {
 				logger.Error("Failed to getGemPortID intfid:%d onuid:%d", intfid, onuid)
 				continue
@@ -449,7 +449,7 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 		case msg := <- s.dhcpIn:	//TODO: We should put omciIn, eapolIn, dhcpIn toghether
 			intfid := msg.IntfId
 			onuid := msg.OnuId
-			gemid, err := getGemPortID(intfid, onuid)
+			gemid, err := s.getGemPortID(intfid, onuid)
 			bytes := msg.Byte
 			pkt := gopacket.NewPacket(bytes, layers.LayerTypeEthernet, gopacket.Default)
 
@@ -593,13 +593,18 @@ func (s *Server) isAllOnuOmciActive() bool {
 	return true
 }
 
-func getGemPortID(intfid uint32, onuid uint32) (uint32, error) {
+func (s *Server) getGemPortID(intfid uint32, onuid uint32) (uint32, error) {
 	logger.Debug("getGemPortID(intfid:%d, onuid:%d)", intfid, onuid)
 	gemportid, err := omci.GetGemPortId(intfid, onuid)
 	if err != nil {
-		logger.Error("%s", err)
+		logger.Warn("Failed to getGemPortID from OMCI lib: %s", err)
+	}
+	onu, err := s.GetOnuByID(onuid)
+	if err != nil {
+		logger.Error("Failed to getGemPortID: %s", err)
 		return 0, err
 	}
+	gemportid = onu.GemportID
 	return uint32(gemportid), nil
 }
 

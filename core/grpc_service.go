@@ -142,12 +142,13 @@ func (s *Server) UplinkPacketOut(c context.Context, packet *openolt.UplinkPacket
 }
 
 func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty, error) {
-	logger.Debug("OLT %d receives FlowAdd() IntfID:%d OnuID:%d EType:%x:.", s.Olt.ID, flow.AccessIntfId, flow.OnuId, flow.Classifier.EthType)
+	logger.Debug("OLT %d receives FlowAdd() IntfID:%d OnuID:%d EType:%x GemPortID:%d", s.Olt.ID, flow.AccessIntfId, flow.OnuId, flow.Classifier.EthType, flow.GemportId)
 	onu, err := s.GetOnuByID(uint32(flow.OnuId))
 
 	if err == nil {
 		intfid := onu.IntfID
 		onuid := onu.OnuID
+		onu.GemportID = uint16(flow.GemportId)
 
 		utils.LoggerWithOnu(onu).WithFields(log.Fields{
 			"olt":   s.Olt.ID,
@@ -156,11 +157,10 @@ func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty,
 
 		if flow.Classifier.EthType == uint32(layers.EthernetTypeEAPOL) {
 			omcistate := omci.GetOnuOmciState(onu.IntfID, onu.OnuID)
-			if omcistate == omci.DONE {
-				s.updateOnuIntState(intfid, onuid, device.ONU_OMCIACTIVE)
-			} else {
-				logger.Error("FlowAdd() OMCI state %d is not \"DONE\"", omci.GetOnuOmciState(onu.OnuID, onu.IntfID))
+			if omcistate != omci.DONE {
+				logger.Warn("FlowAdd() OMCI state %d is not \"DONE\"", omci.GetOnuOmciState(onu.OnuID, onu.IntfID))
 			}
+			s.updateOnuIntState(intfid, onuid, device.ONU_OMCIACTIVE)
 		}
 	}
 	return new(openolt.Empty), nil

@@ -38,6 +38,7 @@ type Onu struct {
 	OperState     string
 	SerialNumber  *openolt.SerialNumber
 	OnuID         uint32
+	GemportID     uint16
 	mu            *sync.Mutex
 }
 
@@ -58,6 +59,7 @@ func NewOnus(oltid uint32, intfid uint32, nonus uint32, nnni uint32) []*Onu {
 		onu.SerialNumber = new(openolt.SerialNumber)
 		onu.SerialNumber.VendorId = []byte("BBSM")
 		onu.SerialNumber.VendorSpecific = NewSN(oltid, intfid, uint32(i))
+		onu.GemportID = 0
 		onus = append(onus, &onu)
 	}
 	return onus
