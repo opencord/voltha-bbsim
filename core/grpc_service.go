@@ -120,7 +120,7 @@ func (s *Server) OmciMsgOut(c context.Context, msg *openolt.OmciMsg) (*openolt.E
 }
 
 func (s *Server) OnuPacketOut(c context.Context, packet *openolt.OnuPacket) (*openolt.Empty, error) {
-	onu, _ := s.GetOnuByID(packet.OnuId)
+	onu, _ := s.GetOnuByID(packet.OnuId, packet.IntfId)
 	utils.LoggerWithOnu(onu).Debugf("OLT %d receives OnuPacketOut () to IF-ID:%d ONU-ID %d.", s.Olt.ID, packet.IntfId, packet.OnuId)
 	onuid := packet.OnuId
 	intfid := packet.IntfId
@@ -143,7 +143,7 @@ func (s *Server) UplinkPacketOut(c context.Context, packet *openolt.UplinkPacket
 
 func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty, error) {
 	logger.Debug("OLT %d receives FlowAdd() IntfID:%d OnuID:%d EType:%x GemPortID:%d", s.Olt.ID, flow.AccessIntfId, flow.OnuId, flow.Classifier.EthType, flow.GemportId)
-	onu, err := s.GetOnuByID(uint32(flow.OnuId))
+	onu, err := s.GetOnuByID(uint32(flow.OnuId), uint32(flow.AccessIntfId))
 
 	if err == nil {
 		intfid := onu.IntfID
@@ -167,7 +167,7 @@ func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty,
 }
 
 func (s *Server) FlowRemove(c context.Context, flow *openolt.Flow) (*openolt.Empty, error) {
-	onu, _ := s.GetOnuByID(uint32(flow.OnuId))
+	onu, _ := s.GetOnuByID(uint32(flow.OnuId), uint32(flow.AccessIntfId))
 
 	utils.LoggerWithOnu(onu).WithFields(log.Fields{
 		"olt":   s.Olt.ID,

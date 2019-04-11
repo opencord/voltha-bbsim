@@ -214,7 +214,7 @@ func (s *Server) updateDevIntState(dev device.Device, state device.DeviceState) 
 }
 
 func (s *Server) updateOnuIntState (intfid uint32, onuid uint32, state device.DeviceState) error {
-	onu, err := s.GetOnuByID(onuid)	//TODO: IntfID should be included ?
+	onu, err := s.GetOnuByID(onuid, intfid)
 	if err != nil {
 		return err
 	}
@@ -458,7 +458,7 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 				continue
 			}
 
-			onu, err := s.GetOnuByID(onuid)
+			onu, err := s.GetOnuByID(onuid, intfid)
 			if err != nil {
 				logger.Error("Failed to GetOnuByID:%d", onuid)
 				continue
@@ -496,10 +496,11 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 				continue
 			}
 			onuid := nnipkt.Info.onuid
-			onu, _ := s.GetOnuByID(onuid)
+			intfid := nnipkt.Info.intfid
+			onu, _ := s.GetOnuByID(onuid, intfid)
 
 			utils.LoggerWithOnu(onu).Info("Received packet from NNI in grpc Server.")
-			intfid := nnipkt.Info.intfid
+
 			pkt := nnipkt.Pkt
 			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "nni", IntfId: intfid, Pkt: pkt.Data()}}
 			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
@@ -517,7 +518,7 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 
 func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packet) error {
 	layerEth := rawpkt.Layer(layers.LayerTypeEthernet)
-	onu, _ := s.GetOnuByID(onuid)
+	onu, _ := s.GetOnuByID(onuid, intfid)
 
 	if layerEth != nil {
 		pkt, _ := layerEth.(*layers.Ethernet)
@@ -599,7 +600,7 @@ func (s *Server) getGemPortID(intfid uint32, onuid uint32) (uint32, error) {
 	if err != nil {
 		logger.Warn("Failed to getGemPortID from OMCI lib: %s", err)
 	}
-	onu, err := s.GetOnuByID(onuid)
+	onu, err := s.GetOnuByID(onuid, intfid)
 	if err != nil {
 		logger.Error("Failed to getGemPortID: %s", err)
 		return 0, err
@@ -621,16 +622,14 @@ func getOnuBySN(onumap map[uint32][]*device.Onu, sn *openolt.SerialNumber) (*dev
 	return nil, err
 }
 
-func (s *Server) GetOnuByID(onuid uint32) (*device.Onu, error) {
-	return getOnuByID(s.Onumap, onuid)
+func (s *Server) GetOnuByID(onuid uint32, intfid uint32) (*device.Onu, error) {
+	return getOnuByID(s.Onumap, onuid, intfid)
 }
 
-func getOnuByID(onumap map[uint32][]*device.Onu, onuid uint32) (*device.Onu, error) {
-	for _, onus := range onumap {
-		for _, onu := range onus {
-			if onu.OnuID == onuid {
-				return onu, nil
-			}
+func getOnuByID(onumap map[uint32][]*device.Onu, onuid uint32, intfid uint32) (*device.Onu, error) {
+	for _, onu := range onumap[intfid] {
+		if onu.OnuID == onuid {
+			return onu, nil
 		}
 	}
 	err := errors.New("No matched OnuID is found ")
