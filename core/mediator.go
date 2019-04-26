@@ -165,7 +165,8 @@ func transitOlt (current device.DeviceState, next device.DeviceState, tm *TestMa
 	logger.Debug("trnsitOlt called current:%d , next:%d", current, next)
 	if current == device.OLT_PREACTIVE && next == device.OLT_ACTIVE {
 		tm.Start()
-		activateDHCPServer("nni_north0", o.dhcpservip)
+		nniup, _ := makeNniName(o.oltid)
+		activateDHCPServer(nniup, o.dhcpservip)
 	} else if current == device.OLT_ACTIVE && next == device.OLT_PREACTIVE{
 		tm.Stop()
 	}
