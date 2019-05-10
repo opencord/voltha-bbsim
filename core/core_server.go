@@ -136,13 +136,13 @@ func (s *Server) Start() error {
 	addressport := s.gRPCAddress + ":" + strconv.Itoa(int(s.gRPCPort))
 	listener, gserver, err := NewGrpcServer(addressport)
 	if err != nil {
-		logger.Error("Failed to create gRPC server", err)
+		logger.Error("Failed to create gRPC server: %v", err)
 		return err
 	}
 	s.gRPCserver = gserver
 	openolt.RegisterOpenoltServer(gserver, s)
 	if err := gserver.Serve(listener); err != nil {
-		logger.Error("Failed to run gRPC server", err)
+		logger.Error("Failed to run gRPC server: %v", err)
 		return err
 	}
 	s.wg.Wait()
@@ -287,19 +287,19 @@ func (s *Server) StartPktLoops(ctx context.Context, stream openolt.Openolt_Enabl
 	s.wg.Add(1)
 	ioinfos, veths, err := createIoinfos(s.Olt.ID, s.Vethnames)
 	if err != nil {
-		logger.Error("createIoinfos failed.", err)
+		logger.Error("createIoinfos failed: %v", err)
 		return err
 	}
 	s.Ioinfos = ioinfos
 	s.Vethnames = veths
-	logger.Debug("Created vethnames:%v", s.Vethnames)
+	logger.Debug("Created vethnames: %v", s.Vethnames)
 
 	parent := ctx
 	child, cancel := context.WithCancel(parent)
 	s.cancel = cancel
 
 	if err = s.runPktLoops(child, stream); err != nil {
-		logger.Error("runPktLoops failed.", err)
+		logger.Error("runPktLoops failed: %v", err)
 		return err
 	}
 	return nil
@@ -319,7 +319,7 @@ func createIoinfos(oltid uint32, Vethnames []string) ([]*Ioinfo, []string, error
 	var handler *pcap.Handle
 	nniup, nnidw := makeNniName(oltid)
 	if handler, Vethnames, err = setupVethHandler(nniup, nnidw, Vethnames); err != nil {
-		logger.Error("setupVethHandler failed for nni", err)
+		logger.Error("setupVethHandler failed for nni: %v", err)
 		return ioinfos, Vethnames, err
 	}
 
@@ -352,7 +352,7 @@ func (s *Server) runPktLoops(ctx context.Context, stream openolt.Openolt_EnableI
 		select {
 		case v, ok := <-errchOmci: // Wait for OmciInitialization
 			if ok { //Error
-				logger.Error("Error happend in Omci:%s", v)
+				logger.Error("Error happend in Omci: %s", v)
 				return v
 			}
 		case <-child.Done():
@@ -427,7 +427,7 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 			logger.Debug("OLT %d send omci indication, IF %v (ONU-ID: %v) pkt:%x.", s.Olt.ID, msg.IntfId, msg.OnuId, msg.Pkt)
 			omci := &openolt.Indication_OmciInd{OmciInd: &msg}
 			if err := stream.Send(&openolt.Indication{Data: omci}); err != nil {
-				logger.Error("send omci indication failed.", err)
+				logger.Error("send omci indication failed: %v", err)
 				continue
 			}
 		case msg := <- s.eapolIn:
@@ -439,11 +439,11 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 				continue
 			}
 
-			logger.Debug("OLT %d send eapol packet in (upstream), IF %v (ONU-ID: %v) pkt:%x.", s.Olt.ID, intfid, onuid)
+			logger.Debug("OLT %d send eapol packet in (upstream), IF %v (ONU-ID: %v) pkt: %x", s.Olt.ID, intfid, onuid, msg.Byte)
 
 			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "pon", IntfId: intfid, GemportId: gemid, Pkt: msg.Byte}}
 			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-				logger.Error("Fail to send EAPOL PktInd indication.", err)
+				logger.Error("Fail to send EAPOL PktInd indication. %v", err)
 				return err
 			}
 		case msg := <- s.dhcpIn:	//TODO: We should put omciIn, eapolIn, dhcpIn toghether
@@ -480,12 +480,11 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 				}).Error("Could not find onuid in CtagMap", onuid, sn, s.CtagMap)
 			}
 
-			logger.Debug("OLT %d send dhcp packet in (upstream), IF %v (ONU-ID: %v) pkt:%x.", s.Olt.ID, intfid, onuid)
-			logger.Debug(pkt.Dump())
+			logger.Debug("OLT %d send dhcp packet in (upstream), IF %v (ONU-ID: %v) pkt: %x", s.Olt.ID, intfid, onuid, pkt.Dump())
 
 			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "pon", IntfId: intfid, GemportId: gemid, Pkt: msg.Byte}}
 			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-				logger.Error("Fail to send DHCP PktInd indication.", err)
+				logger.Error("Fail to send DHCP PktInd indication: %v", err)
 				return err
 			}
 
@@ -504,7 +503,7 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 			pkt := nnipkt.Pkt
 			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "nni", IntfId: intfid, Pkt: pkt.Data()}}
 			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-				logger.Error("Fail to send PktInd indication.", err)
+				logger.Error("Fail to send PktInd indication: %v", err)
 				return err
 			}
 

@@ -46,10 +46,9 @@ func RecvWorker(io *Ioinfo, handler *pcap.Handle, r chan Packet) {
 func SendUni(handle *pcap.Handle, packet gopacket.Packet, onu *device.Onu) {
 	err := handle.WritePacketData(packet.Data())
 	if err != nil {
-		utils.LoggerWithOnu(onu).Error("Error in send packet to UNI-IF: %v e:%s", *handle, err)
+		utils.LoggerWithOnu(onu).Errorf("Error in send packet to UNI-IF: %v e:%v", *handle, err)
 	}
-	utils.LoggerWithOnu(onu).Debug("Successfully send packet to UNI-IF: %v ", *handle)
-	//logger.Println(packet.Dump())
+	utils.LoggerWithOnu(onu).Debugf("Successfully send packet to UNI-IF: %v", *handle)
 }
 
 func SendNni(handle *pcap.Handle, packet gopacket.Packet) {
@@ -156,13 +155,13 @@ func setupVethHandler(inveth string, outveth string, vethnames []string) (*pcap.
 	err1 := CreateVethPairs(inveth, outveth)
 	vethnames = append(vethnames, inveth)
 	if err1 != nil {
-		logger.Error("setupVethHandler failed", err1)
+		logger.Error("setupVethHandler failed: %v", err1)
 		RemoveVeths(vethnames)
 		return nil, vethnames, err1
 	}
 	handler, err2 := getVethHandler(inveth)
 	if err2 != nil {
-		logger.Error("getVethHandler failed", err2)
+		logger.Error("getVethHandler failed: %v", err2)
 		RemoveVeths(vethnames)
 		return nil, vethnames, err2
 	}

@@ -174,7 +174,7 @@ func transitOlt (current device.DeviceState, next device.DeviceState, tm *TestMa
 }
 
 func transitOnu (key device.Devkey, current device.DeviceState, next device.DeviceState, tm *TestManager, o *option) error {
-	logger.Debug("trnsitOnu called with key:%s,  current:%d , next:%d", key, current, next)
+	logger.Debug("trnsitOnu called with key: %v, current: %d, next: %d", key, current, next)
 	if current == device.ONU_ACTIVE && next == device.ONU_OMCIACTIVE {
 		t := tm.CreateTester(o, key)
 		if err := tm.StartTester(key, t); err != nil {

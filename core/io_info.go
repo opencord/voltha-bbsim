@@ -68,12 +68,12 @@ func CreateVethPairs(veth1 string, veth2 string) (err error) {
 	logger.Info("%s & %s was created.", veth1, veth2)
 	err = exec.Command("ip", "link", "set", veth1, "up").Run()
 	if err != nil {
-		logger.Error("Fail to createVeth() veth1 up", err)
+		logger.Error("Fail to createVeth() veth1 up: %v", err)
 		return
 	}
 	err = exec.Command("ip", "link", "set", veth2, "up").Run()
 	if err != nil {
-		logger.Error("Fail to createVeth() veth2 up", err)
+		logger.Error("Fail to createVeth() veth2 up: %v", err)
 		return
 	}
 	logger.Info("%s & %s was up.", veth1, veth2)
