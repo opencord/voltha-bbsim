@@ -29,8 +29,10 @@ const (
 	ONU_INACTIVE   DeviceState = iota	//TODO: Each stage name should be more accurate
 	ONU_ACTIVE
 	ONU_OMCIACTIVE
+	ONU_FREE
 )
 
+// Onu structure stores information of ONUs
 type Onu struct {
 	InternalState DeviceState
 	OltID         uint32
@@ -42,20 +44,22 @@ type Onu struct {
 	mu            *sync.Mutex
 }
 
+// NewSN constructs and returns serial number based on the OLT ID, intf ID and ONU ID
 func NewSN(oltid uint32, intfid uint32, onuid uint32) []byte {
 	sn := []byte{0, byte(oltid % 256), byte(intfid), byte(onuid)}
 	return sn
 }
 
+// NewOnus initializes and returns slice of Onu objects
 func NewOnus(oltid uint32, intfid uint32, nonus uint32, nnni uint32) []*Onu {
 	onus := []*Onu{}
 	for i := 0; i < int(nonus); i++ {
 		onu := Onu{}
-		onu.InternalState = ONU_INACTIVE
+		onu.InternalState = ONU_FREE
 		onu.mu = &sync.Mutex{}
 		onu.IntfID = intfid
 		onu.OltID = oltid
-		onu.OperState = "up"
+		onu.OperState = "down"
 		onu.SerialNumber = new(openolt.SerialNumber)
 		onu.SerialNumber.VendorId = []byte("BBSM")
 		onu.SerialNumber.VendorSpecific = NewSN(oltid, intfid, uint32(i))
@@ -65,11 +69,13 @@ func NewOnus(oltid uint32, intfid uint32, nonus uint32, nnni uint32) []*Onu {
 	return onus
 }
 
+// Initialize method initializes ONU state to up and ONU_INACTIVE
 func (onu *Onu) Initialize() {
 	onu.OperState = "up"
 	onu.InternalState = ONU_INACTIVE
 }
 
+// ValidateONU method validate ONU based on the serial number in onuMap
 func ValidateONU(targetonu openolt.Onu, regonus map[uint32][]*Onu) bool {
 	for _, onus := range regonus {
 		for _, onu := range onus {
@@ -81,13 +87,15 @@ func ValidateONU(targetonu openolt.Onu, regonus map[uint32][]*Onu) bool {
 	return false
 }
 
+// ValidateSN compares two serial numbers and returns result as true/false
 func ValidateSN(sn1 openolt.SerialNumber, sn2 openolt.SerialNumber) bool {
 	return reflect.DeepEqual(sn1.VendorId, sn2.VendorId) && reflect.DeepEqual(sn1.VendorSpecific, sn2.VendorSpecific)
 }
 
+// UpdateOnusOpStatus method updates ONU oper status
 func UpdateOnusOpStatus(ponif uint32, onus []*Onu, opstatus string) {
 	for _, onu := range onus {
-		onu.OperState = "up"
+		onu.OperState = opstatus
 		logger.WithFields(log.Fields{
 			"onu":           onu.SerialNumber,
 			"pon_interface": ponif,
@@ -95,16 +103,19 @@ func UpdateOnusOpStatus(ponif uint32, onus []*Onu, opstatus string) {
 	}
 }
 
+// UpdateIntState method updates ONU internal state
 func (onu *Onu) UpdateIntState(intstate DeviceState) {
 	onu.mu.Lock()
 	defer onu.mu.Unlock()
 	onu.InternalState = intstate
 }
 
+// GetDevkey returns ONU device key
 func (onu *Onu) GetDevkey () Devkey {
 	return Devkey{ID: onu.OnuID, Intfid:onu.IntfID}
 }
 
+// GetIntState returns ONU internal state
 func (onu *Onu) GetIntState() DeviceState {
 	onu.mu.Lock()
 	defer onu.mu.Unlock()

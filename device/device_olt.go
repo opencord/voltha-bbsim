@@ -16,10 +16,14 @@
 
 package device
 
-import "sync"
+import (
+	"strconv"
+	"sync"
+)
 
 type DeviceState int
 
+// Device interface provides common methods for OLT and ONU devices
 type Device interface {
 	Initialize()
 	UpdateIntState(intstate DeviceState)
@@ -32,6 +36,7 @@ type Devkey struct {
 	Intfid uint32
 }
 
+// Olt structure consists required fields for OLT
 type Olt struct {
 	ID                 uint32
 	NumPonIntf         uint32
@@ -65,6 +70,7 @@ const (
 	OLT_ACTIVE            // After PacketInDaemon Running
 )
 
+// NewOlt creates and return new Olt object
 func NewOlt(oltid uint32, npon uint32, nnni uint32) *Olt {
 	olt := Olt{}
 	olt.ID = oltid
@@ -73,6 +79,8 @@ func NewOlt(oltid uint32, npon uint32, nnni uint32) *Olt {
 	olt.Name = "BBSIM OLT"
 	olt.InternalState = OLT_INACTIVE
 	olt.OperState = "up"
+	olt.Manufacture = "BBSIM"
+	olt.SerialNumber = "BBSIMOLT00" + strconv.FormatInt(int64(oltid), 10)
 	olt.Intfs = make([]intf, olt.NumPonIntf+olt.NumNniIntf)
 	olt.HeartbeatSignature = oltid
 	olt.mu = &sync.Mutex{}
@@ -89,6 +97,7 @@ func NewOlt(oltid uint32, npon uint32, nnni uint32) *Olt {
 	return &olt
 }
 
+// Initialize method initializes NNI and PON ports
 func (olt *Olt) Initialize() {
 	olt.InternalState = OLT_INACTIVE
 	olt.OperState = "up"
@@ -104,16 +113,19 @@ func (olt *Olt) Initialize() {
 	}
 }
 
+// GetIntState returns internal state of OLT
 func (olt *Olt) GetIntState() DeviceState {
 	olt.mu.Lock()
 	defer olt.mu.Unlock()
 	return olt.InternalState
 }
 
+// GetDevkey returns device key of OLT
 func (olt *Olt) GetDevkey () Devkey {
 	return Devkey{ID: olt.ID}
 }
 
+// UpdateIntState method updates OLT internal state
 func (olt *Olt) UpdateIntState(intstate DeviceState) {
 	olt.mu.Lock()
 	defer olt.mu.Unlock()

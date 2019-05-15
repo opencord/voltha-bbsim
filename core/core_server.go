@@ -21,11 +21,9 @@ import (
 	"errors"
 	"strconv"
 	"sync"
-
-	omci "github.com/opencord/omci-sim"
-
 	"reflect"
 
+	omci "github.com/opencord/omci-sim"
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
 	"gerrit.opencord.org/voltha-bbsim/common/utils"
 	"gerrit.opencord.org/voltha-bbsim/device"
@@ -44,6 +42,7 @@ const (
 	MAX_ONUS_PER_PON   = 64 // This value should be the same with the value in AdapterPlatrorm class
 )
 
+// Server structure consists of all the params required for BBsim.
 type Server struct {
 	wg           *sync.WaitGroup
 	Olt          *device.Olt
@@ -84,6 +83,7 @@ type stateReport struct {
 	next    device.DeviceState
 }
 
+// NewCore initialize OLT and ONU objects
 func NewCore(opt *option) *Server {
 	// TODO: make it decent
 	oltid := opt.oltid
@@ -125,7 +125,7 @@ func NewCore(opt *option) *Server {
 	return &s
 }
 
-//Blocking
+// Start starts the BBSim and openolt gRPC servers (blocking)
 func (s *Server) Start() error {
 	s.wg = &sync.WaitGroup{}
 	logger.Debug("Start() Start")
@@ -149,7 +149,7 @@ func (s *Server) Start() error {
 	return nil
 }
 
-//Non-Blocking
+// Stop stops the BBSim and openolt gRPC servers (non-blocking).
 func (s *Server) Stop() {
 	logger.Debug("Stop() Start")
 	defer logger.Debug("Stop() Done")
@@ -161,12 +161,12 @@ func (s *Server) Stop() {
 	return
 }
 
-// Blocking
+// Enable invokes methods for activation of OLT and ONU (blocking)
 func (s *Server) Enable(sv *openolt.Openolt_EnableIndicationServer) error {
 	olt := s.Olt
 	defer func() {
 		olt.Initialize()
-		for intfid, _ := range s.Onumap {
+		for intfid := range s.Onumap {
 			for _, onu := range s.Onumap[intfid] {
 				onu.Initialize()
 			}
@@ -190,7 +190,7 @@ func (s *Server) Enable(sv *openolt.Openolt_EnableIndicationServer) error {
 	return nil
 }
 
-//Non-Blocking
+// Disable stops packet loops (non-blocking)
 func (s *Server) Disable() {
 	defer func() {
 		logger.Debug("Disable() Done")
@@ -249,11 +249,19 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 	logger.Info("OLT %s sent OperInd.", olt.Name)
 
 	// OLT sends ONU Discover Indication to Adapter after ONU discovery
-	for intfid, _ := range s.Onumap {
+	for intfid := range s.Onumap {
 		device.UpdateOnusOpStatus(intfid, s.Onumap[intfid], "up")
 	}
 
-	for intfid, _ := range s.Onumap {
+	// Initialize all ONUs
+	for intfid := range s.Onumap {
+		for _, onu := range s.Onumap[intfid] {
+			onu.Initialize()
+		}
+	}
+
+	// Send discovery indication for all ONUs
+	for intfid := range s.Onumap {
 		sendOnuDiscInd(stream, s.Onumap[intfid])
 		logger.Info("OLT id:%d sent ONUDiscInd.", olt.ID)
 	}
@@ -266,14 +274,14 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 		}
 	}
 
-	for intfid, _ := range s.Onumap {
+	for intfid := range s.Onumap {
 		sendOnuInd(stream, s.Onumap[intfid], s.IndInterval)
 		logger.Info("OLT id:%d sent ONUInd.", olt.ID)
 	}
 	return nil
 }
 
-// Blocking
+// StartPktLoops creates veth pairs and invokes runPktLoops (blocking)
 func (s *Server) StartPktLoops(ctx context.Context, stream openolt.Openolt_EnableIndicationServer) error {
 	logger.Debug("StartPktLoops () Start")
 	defer func() {
@@ -305,7 +313,7 @@ func (s *Server) StartPktLoops(ctx context.Context, stream openolt.Openolt_Enabl
 	return nil
 }
 
-//Non-Blocking
+// StopPktLoops (non-blocking)
 func (s *Server) StopPktLoops() {
 	if s.cancel != nil {
 		cancel := s.cancel
@@ -496,7 +504,11 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 			}
 			onuid := nnipkt.Info.onuid
 			intfid := nnipkt.Info.intfid
-			onu, _ := s.GetOnuByID(onuid, intfid)
+			onu, err := s.GetOnuByID(onuid, intfid)
+			if err != nil {
+				logger.Error("Failed processing NNI packet: %v", err)
+				continue
+			}
 
 			utils.LoggerWithOnu(onu).Info("Received packet from NNI in grpc Server.")
 
@@ -517,7 +529,11 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 
 func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packet) error {
 	layerEth := rawpkt.Layer(layers.LayerTypeEthernet)
-	onu, _ := s.GetOnuByID(onuid, intfid)
+	onu, err := s.GetOnuByID(onuid, intfid)
+	if err != nil {
+		logger.Error("Failed processing onuPacketOut: %v", err)
+		return err
+	}
 
 	if layerEth != nil {
 		pkt, _ := layerEth.(*layers.Ethernet)
@@ -571,6 +587,7 @@ func (s *Server) uplinkPacketOut(rawpkt gopacket.Packet) error {
 	return nil
 }
 
+// IsAllOnuActive checks for ONU_ACTIVE state for all the onus in the map
 func IsAllOnuActive(onumap map[uint32][]*device.Onu) bool {
 	for _, onus := range onumap {
 		for _, onu := range onus {
@@ -598,13 +615,13 @@ func (s *Server) getGemPortID(intfid uint32, onuid uint32) (uint32, error) {
 	gemportid, err := omci.GetGemPortId(intfid, onuid)
 	if err != nil {
 		logger.Warn("Failed to getGemPortID from OMCI lib: %s", err)
+		onu, err := s.GetOnuByID(onuid, intfid)
+		if err != nil {
+			logger.Error("Failed to getGemPortID: %s", err)
+			return 0, err
+		}
+		gemportid = onu.GemportID
 	}
-	onu, err := s.GetOnuByID(onuid, intfid)
-	if err != nil {
-		logger.Error("Failed to getGemPortID: %s", err)
-		return 0, err
-	}
-	gemportid = onu.GemportID
 	return uint32(gemportid), nil
 }
 
@@ -621,6 +638,7 @@ func getOnuBySN(onumap map[uint32][]*device.Onu, sn *openolt.SerialNumber) (*dev
 	return nil, err
 }
 
+// GetOnuByID returns ONU object as per onuID and intfID
 func (s *Server) GetOnuByID(onuid uint32, intfid uint32) (*device.Onu, error) {
 	return getOnuByID(s.Onumap, onuid, intfid)
 }
@@ -635,6 +653,7 @@ func getOnuByID(onumap map[uint32][]*device.Onu, onuid uint32, intfid uint32) (*
 	logger.WithFields(log.Fields{
 		"onumap": onumap,
 		"onuid":  onuid,
+		"intfid": intfid,
 	}).Error(err)
 	return nil, err
 }

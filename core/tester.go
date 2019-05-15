@@ -86,7 +86,10 @@ func (tm *TestManager) Stop() error {
 func (tm *TestManager) StartTester (key device.Devkey, t *Tester) error {
 	logger.Debug("StartTester called with key:%v", key)
 	if t.Mode == DEFAULT {
-		//Empty
+		_, child := errgroup.WithContext(tm.ctx)
+		child, cancel := context.WithCancel(child)
+		t.ctx = child
+		t.cancel = cancel
 	} else if t.Mode == AAA || t.Mode == BOTH {
 		eg, child := errgroup.WithContext(tm.ctx)
 		child, cancel := context.WithCancel(child)

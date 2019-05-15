@@ -72,6 +72,7 @@ func getEAPResponder() *eapResponder {
 	return resp
 }
 
+//RunEapolResponder starts go routine which processes and responds for received eapol messages
 func RunEapolResponder(ctx context.Context, eapolOut chan *byteMsg, eapolIn chan *byteMsg, errch chan error) {
 	responder := getEAPResponder()
 	responder.eapolIn = eapolIn

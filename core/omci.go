@@ -24,6 +24,7 @@ import (
 	omci "github.com/opencord/omci-sim"
 )
 
+// RunOmciResponder starts a go routine to process/respond to OMCI messages from VOLTHA
 func RunOmciResponder(ctx context.Context, omciOut chan openolt.OmciMsg, omciIn chan openolt.OmciIndication, errch chan error) {
 	go func() {
 		defer logger.Debug("Omci response process was done")
@@ -57,8 +58,8 @@ func RunOmciResponder(ctx context.Context, omciOut chan openolt.OmciMsg, omciIn 
 	}()
 }
 
+// HexDecode converts the hex encoding to binary
 func HexDecode(pkt []byte) []byte {
-	// Convert the hex encoding to binary
 	// TODO - Change openolt adapter to send raw binary instead of hex encoded
 	p := make([]byte, len(pkt)/2)
 	for i, j := 0, 0; i < len(pkt); i, j = i+2, j+1 {

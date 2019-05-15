@@ -46,6 +46,7 @@ type option struct {
 	Debuglvl	string
 }
 
+// GetOptions receives command line options and stores them in option structure
 func GetOptions() *option {
 	o := new(option)
 	addressport := flag.String("H", ":50060", "IP address:port")
@@ -87,6 +88,7 @@ type mediator struct {
 	testmanager *TestManager
 }
 
+// NewMediator returns a new mediator object
 func NewMediator(o *option) *mediator {
 	m := new(mediator)
 	m.opt = o
@@ -100,6 +102,7 @@ func NewMediator(o *option) *mediator {
 	return m
 }
 
+// Start mediator
 func (m *mediator) Start() {
 	var wg sync.WaitGroup
 	opt := m.opt
@@ -140,6 +143,7 @@ func (m *mediator) Start() {
 	logger.Debug("Reach to the end line")
 }
 
+// Mediate method is invoked on OLT and ONU state change
 func (m *mediator) Mediate() {
 	defer logger.Debug("Mediate Done")
 	for sr := range m.server.stateRepCh {
@@ -180,8 +184,7 @@ func transitOnu (key device.Devkey, current device.DeviceState, next device.Devi
 		if err := tm.StartTester(key, t); err != nil {
 			logger.Error("Cannot Start Executer error:%v", err)
 		}
-	} else if (current == device.ONU_OMCIACTIVE || current == device.ONU_ACTIVE) &&
-		next == device.ONU_INACTIVE {
+	} else if current == device.ONU_OMCIACTIVE && next == device.ONU_INACTIVE {
 		if err := tm.StopTester(key); err != nil {
 			logger.Error("Cannot Start Executer error:%v", err)
 		}
