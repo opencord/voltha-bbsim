@@ -19,18 +19,18 @@ package core
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strconv"
 	"sync"
-	"reflect"
 
-	omci "github.com/opencord/omci-sim"
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
 	"gerrit.opencord.org/voltha-bbsim/common/utils"
 	"gerrit.opencord.org/voltha-bbsim/device"
-	"gerrit.opencord.org/voltha-bbsim/protos"
+	openolt "gerrit.opencord.org/voltha-bbsim/protos"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	omci "github.com/opencord/omci-sim"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -74,7 +74,7 @@ type Packet struct {
 type byteMsg struct {
 	IntfId uint32
 	OnuId  uint32
-	Byte []byte
+	Byte   []byte
 }
 
 type stateReport struct {
@@ -104,8 +104,8 @@ func NewCore(opt *option) *Server {
 		omciOut:      make(chan openolt.OmciMsg, 1024),
 		eapolIn:      make(chan *byteMsg, 1024),
 		eapolOut:     make(chan *byteMsg, 1024),
-		dhcpIn:      make(chan *byteMsg, 1024),
-		dhcpOut:     make(chan *byteMsg, 1024),
+		dhcpIn:       make(chan *byteMsg, 1024),
+		dhcpOut:      make(chan *byteMsg, 1024),
 	}
 
 	nnni := s.Olt.NumNniIntf
@@ -179,11 +179,14 @@ func (s *Server) Enable(sv *openolt.Openolt_EnableIndicationServer) error {
 	if err := s.activateOLT(*sv); err != nil {
 		return err
 	}
+
 	s.updateDevIntState(olt, device.OLT_PREACTIVE)
 
 	coreCtx := context.Background()
 	coreCtx, corecancel := context.WithCancel(coreCtx)
 	s.cancel = corecancel
+	go s.sendDiscovertoONUs(*sv)
+
 	if err := s.StartPktLoops(coreCtx, *sv); err != nil {
 		return err
 	}
@@ -213,12 +216,17 @@ func (s *Server) updateDevIntState(dev device.Device, state device.DeviceState) 
 	}
 }
 
-func (s *Server) updateOnuIntState (intfid uint32, onuid uint32, state device.DeviceState) error {
+func (s *Server) updateOnuIntState(intfid uint32, onuid uint32, state device.DeviceState) error {
 	onu, err := s.GetOnuByID(onuid, intfid)
 	if err != nil {
 		return err
 	}
 	s.updateDevIntState(onu, state)
+	return nil
+}
+func (s *Server) Activate(onu *device.Onu) error {
+	utils.LoggerWithOnu(onu).Info("sending ONUInd Onuid")
+	go sendOnuIndtoONU(*s.EnableServer, onu)
 	return nil
 }
 
@@ -248,6 +256,9 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 	}
 	logger.Info("OLT %s sent OperInd.", olt.Name)
 
+	return nil
+}
+func (s *Server) sendDiscovertoONUs(stream openolt.Openolt_EnableIndicationServer) {
 	// OLT sends ONU Discover Indication to Adapter after ONU discovery
 	for intfid := range s.Onumap {
 		device.UpdateOnusOpStatus(intfid, s.Onumap[intfid], "up")
@@ -261,24 +272,10 @@ func (s *Server) activateOLT(stream openolt.Openolt_EnableIndicationServer) erro
 	}
 
 	// Send discovery indication for all ONUs
-	for intfid := range s.Onumap {
-		sendOnuDiscInd(stream, s.Onumap[intfid])
-		logger.Info("OLT id:%d sent ONUDiscInd.", olt.ID)
+	for intfid, _ := range s.Onumap {
+		sendOnuDiscInd(stream, s.Onumap[intfid], s.IndInterval)
+		logger.Info("OLT sent ONUDiscInd for intfId:%d.", intfid)
 	}
-
-	// OLT Sends OnuInd after waiting all of those ONUs up
-	for {
-		if IsAllOnuActive(s.Onumap) {
-			logger.Debug("All the Onus are Activated.")
-			break
-		}
-	}
-
-	for intfid := range s.Onumap {
-		sendOnuInd(stream, s.Onumap[intfid], s.IndInterval)
-		logger.Info("OLT id:%d sent ONUInd.", olt.ID)
-	}
-	return nil
 }
 
 // StartPktLoops creates veth pairs and invokes runPktLoops (blocking)
@@ -438,7 +435,7 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 				logger.Error("send omci indication failed: %v", err)
 				continue
 			}
-		case msg := <- s.eapolIn:
+		case msg := <-s.eapolIn:
 			intfid := msg.IntfId
 			onuid := msg.OnuId
 			gemid, err := s.getGemPortID(intfid, onuid)
@@ -454,7 +451,7 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 				logger.Error("Fail to send EAPOL PktInd indication. %v", err)
 				return err
 			}
-		case msg := <- s.dhcpIn:	//TODO: We should put omciIn, eapolIn, dhcpIn toghether
+		case msg := <-s.dhcpIn: //TODO: We should put omciIn, eapolIn, dhcpIn toghether
 			intfid := msg.IntfId
 			onuid := msg.OnuId
 			gemid, err := s.getGemPortID(intfid, onuid)
@@ -540,7 +537,7 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 		ethtype := pkt.EthernetType
 		if ethtype == layers.EthernetTypeEAPOL {
 			utils.LoggerWithOnu(onu).Info("Received downstream packet is EAPOL.")
-			eapolPkt := byteMsg{IntfId:intfid, OnuId:onuid, Byte: rawpkt.Data()}
+			eapolPkt := byteMsg{IntfId: intfid, OnuId: onuid, Byte: rawpkt.Data()}
 			s.eapolOut <- &eapolPkt
 			return nil
 		} else if layerDHCP := rawpkt.Layer(layers.LayerTypeDHCPv4); layerDHCP != nil {
@@ -551,7 +548,7 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 			rawpkt, _, _ = PopVLAN(rawpkt)
 			rawpkt, _, _ = PopVLAN(rawpkt)
 			logger.Debug("%s", rawpkt.Dump())
-			dhcpPkt := byteMsg{IntfId:intfid, OnuId:onuid, Byte: rawpkt.Data()}
+			dhcpPkt := byteMsg{IntfId: intfid, OnuId: onuid, Byte: rawpkt.Data()}
 			s.dhcpOut <- &dhcpPkt
 			return nil
 		} else {
@@ -601,7 +598,7 @@ func IsAllOnuActive(onumap map[uint32][]*device.Onu) bool {
 
 func (s *Server) isAllOnuOmciActive() bool {
 	for _, onus := range s.Onumap {
-		for _, onu := range onus{
+		for _, onu := range onus {
 			if onu.GetIntState() != device.ONU_OMCIACTIVE {
 				return false
 			}

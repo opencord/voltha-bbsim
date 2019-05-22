@@ -70,9 +70,10 @@ func sendOperInd(stream openolt.Openolt_EnableIndicationServer, olt *device.Olt)
 	return nil
 }
 
-func sendOnuDiscInd(stream openolt.Openolt_EnableIndicationServer, onus []*device.Onu) error {
+func sendOnuDiscInd(stream openolt.Openolt_EnableIndicationServer, onus []*device.Onu, delay int) error {
 	for i, onu := range onus {
 		data := &openolt.Indication_OnuDiscInd{&openolt.OnuDiscIndication{IntfId: onu.IntfID, SerialNumber: onu.SerialNumber}}
+		time.Sleep(time.Duration(delay) * time.Millisecond)
 		if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
 			logger.Error("Failed to send ONUDiscInd [id: %d]: %v", i, err)
 			return err
@@ -84,7 +85,7 @@ func sendOnuDiscInd(stream openolt.Openolt_EnableIndicationServer, onus []*devic
 
 func sendOnuInd(stream openolt.Openolt_EnableIndicationServer, onus []*device.Onu, delay int) error {
 	for i, onu := range onus {
-		time.Sleep(time.Duration(delay) * time.Millisecond)
+//		time.Sleep(time.Duration(delay) * time.Millisecond)
 		data := &openolt.Indication_OnuInd{&openolt.OnuIndication{IntfId: onu.IntfID, OnuId: onu.OnuID, OperState: "up", AdminState: "up", SerialNumber: onu.SerialNumber}}
 		if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
 			logger.Error("Failed to send ONUInd [id: %d]: %v", i, err)
@@ -93,4 +94,14 @@ func sendOnuInd(stream openolt.Openolt_EnableIndicationServer, onus []*device.On
 		utils.LoggerWithOnu(onu).Info("sendONUInd Onuid")
 	}
 	return nil
+}
+
+func sendOnuIndtoONU(stream openolt.Openolt_EnableIndicationServer, onu *device.Onu ) {
+	time.Sleep(time.Duration(10000) * time.Millisecond)    //TODO:This sleep added because of a known race condition in VOLTHA. Can be removed after fix.
+	data := &openolt.Indication_OnuInd{&openolt.OnuIndication{IntfId: onu.IntfID, OnuId: onu.OnuID, OperState: "up", AdminState: "up", SerialNumber: onu.SerialNumber}}
+	if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
+			logger.Error("Failed to send ONUInd [id: %d]: %v", onu.OnuID, err)
+	}
+	utils.LoggerWithOnu(onu).Info("sendONUInd Onuid")
+
 }

@@ -99,5 +99,5 @@ Usage of ./bbsim:
   -s string
     	DHCP Server IP Address (default "182.21.0.128")
   -v int
-    	Interval each Indication (ms) (default 1000)
+    	Interval each ONU Discovery Indication (ms) (default 1000)
 ```

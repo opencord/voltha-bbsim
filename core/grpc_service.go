@@ -22,7 +22,7 @@ import (
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
 	"gerrit.opencord.org/voltha-bbsim/common/utils"
 	"gerrit.opencord.org/voltha-bbsim/device"
-	"gerrit.opencord.org/voltha-bbsim/protos"
+        "gerrit.opencord.org/voltha-bbsim/protos"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	omci "github.com/opencord/omci-sim"
@@ -99,6 +99,7 @@ func (s *Server) ActivateOnu(c context.Context, onu *openolt.Onu) (*openolt.Empt
 	onuid := onu.OnuId
 	matched.OnuID = onuid
 	s.updateDevIntState(matched, device.ONU_ACTIVE)
+	s.Activate(matched)
 	logger.Debug("ONU IntfID: %d OnuID: %d activated succesufully.", onu.IntfId, onu.OnuId)
 
 	return new(openolt.Empty), nil
