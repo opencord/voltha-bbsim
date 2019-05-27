@@ -213,13 +213,14 @@ func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty,
 
 // FlowRemove should handle flow deletion from datapath
 func (s *Server) FlowRemove(c context.Context, flow *openolt.Flow) (*openolt.Empty, error) {
-	onu, _ := s.GetOnuByID(uint32(flow.OnuId), uint32(flow.AccessIntfId))
-
-	utils.LoggerWithOnu(onu).WithFields(log.Fields{
-		"olt":   s.Olt.ID,
-		"c_tag": flow.Action.IVid,
-	}).Debug("OLT receives FlowRemove().")
-
+	logger.Debug("OLT %d receives FlowRemove()", s.Olt.ID)
+	onu, err := s.GetOnuByID(uint32(flow.OnuId), uint32(flow.AccessIntfId))
+	if err == nil{
+		utils.LoggerWithOnu(onu).WithFields(log.Fields{
+			"olt":   s.Olt.ID,
+			"c_tag": flow.Action.IVid,
+		}).Debug("OLT receives FlowRemove().")
+	}
 	return new(openolt.Empty), nil
 }
 

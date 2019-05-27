@@ -19,10 +19,11 @@ package core
 import (
 	"context"
 	"errors"
-	"reflect"
 	"strconv"
 	"sync"
+	"reflect"
 
+	omci "github.com/opencord/omci-sim"
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
 	"gerrit.opencord.org/voltha-bbsim/common/utils"
 	"gerrit.opencord.org/voltha-bbsim/device"
@@ -30,7 +31,6 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	omci "github.com/opencord/omci-sim"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
