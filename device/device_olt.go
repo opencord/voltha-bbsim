@@ -31,8 +31,9 @@ type Device interface {
 	GetDevkey() Devkey
 }
 
+// Devkey key for OLT/ONU devices
 type Devkey struct {
-	ID uint32
+	ID     uint32
 	Intfid uint32
 }
 
@@ -47,30 +48,68 @@ type Olt struct {
 	Name               string
 	InternalState      DeviceState
 	OperState          string
-	Intfs              []intf
+	NniIntfs		   []nniIntf
+	PonIntfs		   []ponIntf
 	HeartbeatSignature uint32
-	mu            *sync.Mutex
+	mu                 *sync.Mutex
 }
 
-type intf struct {
-	Type      string
-	IntfID    uint32
-	OperState string
+// AlarmState informs about the present state of the supported alarms
+type AlarmState uint32
+
+const (
+	// PonLosCleared alarm state for PON-LOS
+	PonLosCleared AlarmState = iota
+	// NniLosCleared alarm state for NNI-LOS
+	NniLosCleared
+	// PonLosRaised alarm state for PON-LOS
+	PonLosRaised
+	// NniLosRaised  for NNI-LOS
+	NniLosRaised
+)
+
+type ponIntf struct {
+	Type       string
+	IntfID     uint32
+	OperState  string
+	AlarmState AlarmState
 }
+
+type nniIntf struct {
+	Type       string
+	IntfID     uint32
+	OperState  string
+	AlarmState AlarmState
+}
+
+// Constants for port types
+const (
+	IntfPon = "pon"
+	IntfNni = "nni"
+)
 
 /* OltState
 OLT_INACTIVE -> OLT_PREACTIVE -> ACTIVE
-    (ActivateOLT)   (Enable)
+        (ActivateOLT)      (Enable)
        <-              <-
 */
 
+// Constants for OLT states
 const (
-	OLT_INACTIVE DeviceState  = iota // OLT/ONUs are not instantiated
-	OLT_PREACTIVE        // Before PacketInDaemon Running
-	OLT_ACTIVE            // After PacketInDaemon Running
+	OLT_INACTIVE  DeviceState = iota // OLT/ONUs are not instantiated
+	OLT_PREACTIVE                    // Before PacketInDaemon Running
+	OLT_ACTIVE                       // After PacketInDaemon Running
 )
 
-// NewOlt creates and return new Olt object
+// OLTAlarmStateToString is used to get alarm state as string
+var OLTAlarmStateToString = map[AlarmState]string{
+	PonLosCleared: "PonLosCleared",
+	NniLosCleared: "NniLosCleared",
+	PonLosRaised:  "PonLosRaised",
+	NniLosRaised:  "NniLosRaised",
+}
+
+// NewOlt initialises the new olt variable with the given values
 func NewOlt(oltid uint32, npon uint32, nnni uint32) *Olt {
 	olt := Olt{}
 	olt.ID = oltid
@@ -81,18 +120,21 @@ func NewOlt(oltid uint32, npon uint32, nnni uint32) *Olt {
 	olt.OperState = "up"
 	olt.Manufacture = "BBSIM"
 	olt.SerialNumber = "BBSIMOLT00" + strconv.FormatInt(int64(oltid), 10)
-	olt.Intfs = make([]intf, olt.NumPonIntf+olt.NumNniIntf)
+	olt.NniIntfs = make([]nniIntf, olt.NumNniIntf)
+	olt.PonIntfs = make([]ponIntf, olt.NumPonIntf)
 	olt.HeartbeatSignature = oltid
 	olt.mu = &sync.Mutex{}
 	for i := uint32(0); i < olt.NumNniIntf; i++ {
-		olt.Intfs[i].IntfID = i
-		olt.Intfs[i].OperState = "up"
-		olt.Intfs[i].Type = "nni"
+		olt.NniIntfs[i].IntfID = i
+		olt.NniIntfs[i].OperState = "up"
+		olt.NniIntfs[i].Type = IntfNni
+		olt.NniIntfs[i].AlarmState = NniLosCleared
 	}
-	for i := uint32(olt.NumNniIntf); i < olt.NumPonIntf+olt.NumNniIntf; i++ {
-		olt.Intfs[i].IntfID = i
-		olt.Intfs[i].OperState = "up"
-		olt.Intfs[i].Type = "pon"
+	for i := uint32(0); i < olt.NumPonIntf; i++ {
+		olt.PonIntfs[i].IntfID = i
+		olt.PonIntfs[i].OperState = "up"
+		olt.PonIntfs[i].Type = IntfPon
+		olt.PonIntfs[i].AlarmState = PonLosCleared
 	}
 	return &olt
 }
@@ -102,14 +144,16 @@ func (olt *Olt) Initialize() {
 	olt.InternalState = OLT_INACTIVE
 	olt.OperState = "up"
 	for i := uint32(0); i < olt.NumNniIntf; i++ {
-		olt.Intfs[i].IntfID = i
-		olt.Intfs[i].OperState = "up"
-		olt.Intfs[i].Type = "nni"
+		olt.NniIntfs[i].IntfID = i
+		olt.NniIntfs[i].OperState = "up"
+		olt.NniIntfs[i].Type = IntfNni
+		olt.NniIntfs[i].AlarmState = NniLosCleared
 	}
-	for i := uint32(olt.NumNniIntf); i < olt.NumPonIntf+olt.NumNniIntf; i++ {
-		olt.Intfs[i].IntfID = i
-		olt.Intfs[i].OperState = "up"
-		olt.Intfs[i].Type = "pon"
+	for i := uint32(olt.NumNniIntf); i < olt.NumPonIntf; i++ {
+		olt.PonIntfs[i].IntfID = i
+		olt.PonIntfs[i].OperState = "up"
+		olt.PonIntfs[i].Type = IntfPon
+		olt.PonIntfs[i].AlarmState = PonLosCleared
 	}
 }
 
@@ -121,7 +165,7 @@ func (olt *Olt) GetIntState() DeviceState {
 }
 
 // GetDevkey returns device key of OLT
-func (olt *Olt) GetDevkey () Devkey {
+func (olt *Olt) GetDevkey() Devkey {
 	return Devkey{ID: olt.ID}
 }
 
@@ -130,4 +174,16 @@ func (olt *Olt) UpdateIntState(intstate DeviceState) {
 	olt.mu.Lock()
 	defer olt.mu.Unlock()
 	olt.InternalState = intstate
+}
+
+// UpdateNniPortState updates the status of the nni-port
+func (olt *Olt) UpdateNniPortState(portID uint32, alarmState AlarmState, operState string) {
+	olt.NniIntfs[portID].AlarmState = alarmState
+	olt.NniIntfs[portID].OperState = operState
+}
+
+// UpdatePonPortState updates the status of the pon-port
+func (olt *Olt) UpdatePonPortState(portID uint32, alarmState AlarmState, operState string) {
+	olt.PonIntfs[portID].AlarmState = alarmState
+	olt.PonIntfs[portID].OperState = operState
 }

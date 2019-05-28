@@ -21,17 +21,32 @@ import (
 	"sync"
 
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"gerrit.opencord.org/voltha-bbsim/protos"
+	openolt "gerrit.opencord.org/voltha-bbsim/protos"
 	log "github.com/sirupsen/logrus"
 )
 
+// Constants for the ONU states
 const (
-	ONU_INACTIVE   DeviceState = iota	//TODO: Each stage name should be more accurate
+	ONU_INACTIVE DeviceState = iota // TODO: Each stage name should be more accurate
 	ONU_ACTIVE
 	ONU_OMCIACTIVE
 	ONU_AUTHENTICATED
+	ONU_LOS_RAISED
+	ONU_OMCI_CHANNEL_LOS_RAISED
+	ONU_LOS_ON_OLT_PON_LOS // TODO give more suitable and crisp name
 	ONU_FREE
 )
+
+// ONUState maps int value of device state to string
+var ONUState = map[DeviceState]string{
+	ONU_INACTIVE:                "ONU_INACTIVE",
+	ONU_ACTIVE:                  "ONU_ACTIVE",
+	ONU_OMCIACTIVE:              "ONU_OMCIACTIVE",
+	ONU_FREE:                    "ONU_FREE",
+	ONU_LOS_RAISED:              "ONU_LOS_RAISED",
+	ONU_OMCI_CHANNEL_LOS_RAISED: "ONU_OMCI_CHANNEL_LOS_RAISED",
+	ONU_LOS_ON_OLT_PON_LOS:      "ONU_LOS_ON_OLT_PON_LOS",
+}
 
 // Onu structure stores information of ONUs
 type Onu struct {
@@ -42,6 +57,7 @@ type Onu struct {
 	SerialNumber  *openolt.SerialNumber
 	OnuID         uint32
 	GemportID     uint16
+	FlowIDs       []uint32
 	mu            *sync.Mutex
 }
 
@@ -54,9 +70,9 @@ func NewSN(oltid uint32, intfid uint32, onuid uint32) []byte {
 // NewOnus initializes and returns slice of Onu objects
 func NewOnus(oltid uint32, intfid uint32, nonus uint32, nnni uint32) []*Onu {
 	onus := []*Onu{}
-	for i := 0; i < int(nonus); i++ {
+	for i := 1; i <= int(nonus); i++ {
 		onu := Onu{}
-		onu.InternalState = ONU_FREE
+		onu.InternalState = ONU_FREE // New Onu Initialised with state ONU_FREE
 		onu.mu = &sync.Mutex{}
 		onu.IntfID = intfid
 		onu.OltID = oltid
@@ -94,14 +110,12 @@ func ValidateSN(sn1 openolt.SerialNumber, sn2 openolt.SerialNumber) bool {
 }
 
 // UpdateOnusOpStatus method updates ONU oper status
-func UpdateOnusOpStatus(ponif uint32, onus []*Onu, opstatus string) {
-	for _, onu := range onus {
-		onu.OperState = opstatus
-		logger.WithFields(log.Fields{
-			"onu":           onu.SerialNumber,
-			"pon_interface": ponif,
-		}).Info("ONU discovered.")
-	}
+func UpdateOnusOpStatus(ponif uint32, onu *Onu, opstatus string) {
+	onu.OperState = opstatus
+	logger.WithFields(log.Fields{
+		"onu":           onu.SerialNumber,
+		"pon_interface": ponif,
+	}).Info("ONU OperState Updated")
 }
 
 // UpdateIntState method updates ONU internal state
@@ -112,8 +126,8 @@ func (onu *Onu) UpdateIntState(intstate DeviceState) {
 }
 
 // GetDevkey returns ONU device key
-func (onu *Onu) GetDevkey () Devkey {
-	return Devkey{ID: onu.OnuID, Intfid:onu.IntfID}
+func (onu *Onu) GetDevkey() Devkey {
+	return Devkey{ID: onu.OnuID, Intfid: onu.IntfID}
 }
 
 // GetIntState returns ONU internal state
@@ -121,4 +135,18 @@ func (onu *Onu) GetIntState() DeviceState {
 	onu.mu.Lock()
 	defer onu.mu.Unlock()
 	return onu.InternalState
+}
+
+// DeleteFlowID method search and delete flowID from the onu flowIDs slice
+func (onu *Onu) DeleteFlowID(flowID uint32) {
+	for pos, id := range onu.FlowIDs {
+		if id == flowID {
+			// delete the flowID by shifting all flowIDs by one
+			onu.FlowIDs = append(onu.FlowIDs[:pos], onu.FlowIDs[pos+1:]...)
+			t := make([]uint32, len(onu.FlowIDs))
+			copy(t, onu.FlowIDs)
+			onu.FlowIDs = t
+			break
+		}
+	}
 }

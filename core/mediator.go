@@ -18,17 +18,16 @@ package core
 
 import (
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	log "github.com/sirupsen/logrus"
 	"gerrit.opencord.org/voltha-bbsim/device"
-	"reflect"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -37,21 +36,28 @@ const (
 	BOTH
 )
 
+// Store emulation mode
 type Mode int
 
+// AutoONUActivate is flag for Auto ONU Add on/off.
+var AutoONUActivate int
+
 type option struct {
-	address     string
-	port        uint32
-	oltid       uint32
-	npon        uint32
-	nonus       uint32
-	aaawait     int
-	dhcpwait    int
-	dhcpservip  string
-	intvl       int
-	Mode        Mode
-	KafkaBroker string
-	Debuglvl	string
+	address                  string
+	port                     uint32
+	mgmtGrpcPort             uint32
+	mgmtRestPort             uint32
+	oltid                    uint32
+	npon                     uint32
+	nonus                    uint32
+	aaawait                  int
+	dhcpwait                 int
+	dhcpservip               string
+	intvl                    int
+	interactiveOnuActivation bool
+	Mode                     Mode
+	KafkaBroker              string
+	Debuglvl                 string
 }
 
 // GetOptions receives command line options and stores them in option structure
@@ -67,6 +73,9 @@ func GetOptions() *option {
 	dhcpservip := flag.String("s", "182.21.0.128", "DHCP Server IP Address")
 	intvl := flag.Int("v", 1000, "Interval each Indication (ms)")
 	kafkaBroker := flag.String("k", "", "Kafka broker")
+	interactiveOnuActivation := flag.Bool("ia", false, "Enable interactive activation of ONUs")
+	mgmtGrpcPort := flag.Int("grpc", 50061, "BBSim API server gRPC port")
+	mgmtRestPort := flag.Int("rest", 50062, "BBSim API server REST port")
 	o.Mode = DEFAULT
 	debg := flag.String("d", "DEBUG", "Debug Level(TRACE DEBUG INFO WARN ERROR)")
 	flag.Parse()
@@ -83,10 +92,18 @@ func GetOptions() *option {
 	o.dhcpwait = *dhcpwait
 	o.dhcpservip = *dhcpservip
 	o.intvl = *intvl
+	o.interactiveOnuActivation = *interactiveOnuActivation
 	o.KafkaBroker = *kafkaBroker
-	o.address = (strings.Split(*addressport, ":")[0])
+	o.address = strings.Split(*addressport, ":")[0]
 	tmp, _ := strconv.Atoi(strings.Split(*addressport, ":")[1])
 	o.port = uint32(tmp)
+	o.mgmtGrpcPort = uint32(*mgmtGrpcPort)
+	o.mgmtRestPort = uint32(*mgmtRestPort)
+
+	if o.interactiveOnuActivation == true {
+		log.Info("Automatic ONU activation disabled: use BBSim API to activate ONUs")
+	}
+
 	return o
 }
 
@@ -115,14 +132,11 @@ func (m *mediator) Start() {
 	var wg sync.WaitGroup
 	opt := m.opt
 	server := NewCore(opt)
-	wg.Add(1)
-	go func() {
-		if err := server.Start(); err != nil { //Blocking
-			logger.Error("Start %s", err)
-		}
-		wg.Done()
-		return
-	}()
+	server.wg = &sync.WaitGroup{}
+	server.wg.Add(1)
+	go server.StartServerActionLoop(&wg)
+	server.serverActionCh <- "start"
+	go server.startMgmtServer(&wg)
 
 	tm := NewTestManager(opt)
 	m.server = server
@@ -140,15 +154,17 @@ func (m *mediator) Start() {
 		}()
 		for sig := range c {
 			wg.Add(1)
-			fmt.Println("SIGINT", sig)
+			logger.Debug("SIGINT %v", sig)
 			close(c)
-			server.Stop() //Non-blocking
-			tm.Stop()     //Non-blocking
+			server.Stop() // Non-blocking
+			tm.Stop()     // Non-blocking
+			server.stopMgmtServer()
+			server.wg.Done()
 			return
 		}
 	}()
 	wg.Wait()
-	logger.Debug("Reach to the end line")
+	server.wg.Wait()
 }
 
 // Mediate method is invoked on OLT and ONU state change
@@ -158,7 +174,7 @@ func (m *mediator) Mediate() {
 		next := sr.next
 		current := sr.current
 		dev := sr.device
-		if reflect.TypeOf(dev) == reflect.TypeOf(&device.Olt{}){
+		if reflect.TypeOf(dev) == reflect.TypeOf(&device.Olt{}) {
 			logger.Debug("Received OLT Device %v Current: %d Next: %d", dev, current, next)
 			if err := transitOlt(current, next, m.testmanager, m.opt); err != nil {
 				logger.Error("%v", err)
@@ -173,19 +189,22 @@ func (m *mediator) Mediate() {
 	}
 }
 
-func transitOlt (current device.DeviceState, next device.DeviceState, tm *TestManager, o *option) error {
+func transitOlt(current device.DeviceState, next device.DeviceState, tm *TestManager, o *option) error {
 	logger.Debug("trnsitOlt called current:%d , next:%d", current, next)
 	if current == device.OLT_PREACTIVE && next == device.OLT_ACTIVE {
 		tm.Start()
 		nniup, _ := makeNniName(o.oltid)
 		activateDHCPServer(nniup, o.dhcpservip)
-	} else if current == device.OLT_ACTIVE && next == device.OLT_PREACTIVE{
+	} else if current == device.OLT_ACTIVE && next == device.OLT_PREACTIVE {
 		tm.Stop()
+	} else if current == device.OLT_ACTIVE && next == device.OLT_INACTIVE {
+		// Reboot case
+		// TODO Point of discussion
 	}
 	return nil
 }
 
-func transitOnu (key device.Devkey, current device.DeviceState, next device.DeviceState, tm *TestManager, o *option) error {
+func transitOnu(key device.Devkey, current device.DeviceState, next device.DeviceState, tm *TestManager, o *option) error {
 	logger.Debug("trnsitOnu called with key: %v, current: %d, next: %d", key, current, next)
 	if o.Mode == AAA || o.Mode == BOTH {
 		if current == device.ONU_ACTIVE && next == device.ONU_OMCIACTIVE {
@@ -200,7 +219,7 @@ func transitOnu (key device.Devkey, current device.DeviceState, next device.Devi
 		}
 	}
 
-	if o.Mode == BOTH{
+	if o.Mode == BOTH {
 		if current == device.ONU_OMCIACTIVE && next == device.ONU_AUTHENTICATED {
 			t := tm.CreateTester("DHCP", o, key, activateDHCPClient, o.dhcpwait)
 			if err := tm.StartTester(t); err != nil {

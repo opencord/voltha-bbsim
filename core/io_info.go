@@ -25,10 +25,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// Ioinfo represents the input/output
 type Ioinfo struct {
 	Name    string
-	iotype  string //nni or uni
-	ioloc   string //inside or outsode
+	iotype  string // nni or uni
+	ioloc   string // inside or outside
 	intfid  uint32
 	onuid   uint32
 	handler *pcap.Handle
@@ -45,6 +46,7 @@ func (s *Server) identifyUniIoinfo(ioloc string, intfid uint32, onuid uint32) (*
 	return nil, err
 }
 
+// IdentifyNniIoinfo returns matched ioinfo
 func (s *Server) IdentifyNniIoinfo(ioloc string) (*Ioinfo, error) {
 	for _, ioinfo := range s.Ioinfos {
 		if ioinfo.iotype == "nni" && ioinfo.ioloc == ioloc {
@@ -56,6 +58,7 @@ func (s *Server) IdentifyNniIoinfo(ioloc string) (*Ioinfo, error) {
 	return nil, err
 }
 
+// CreateVethPairs creates veth pairs with given names
 func CreateVethPairs(veth1 string, veth2 string) (err error) {
 	err = exec.Command("ip", "link", "add", veth1, "type", "veth", "peer", "name", veth2).Run()
 	if err != nil {
@@ -80,6 +83,7 @@ func CreateVethPairs(veth1 string, veth2 string) (err error) {
 	return
 }
 
+// RemoveVeth deletes veth by given name
 func RemoveVeth(name string) error {
 	err := exec.Command("ip", "link", "del", name).Run()
 	if err != nil {
@@ -89,6 +93,7 @@ func RemoveVeth(name string) error {
 	return err
 }
 
+// RemoveVeths deletes veth
 func RemoveVeths(names []string) {
 	for _, name := range names {
 		RemoveVeth(name)

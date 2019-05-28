@@ -18,14 +18,13 @@ package core
 
 import (
 	"context"
-
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"gerrit.opencord.org/voltha-bbsim/protos"
+	openolt "gerrit.opencord.org/voltha-bbsim/protos"
 	omci "github.com/opencord/omci-sim"
 )
 
 // RunOmciResponder starts a go routine to process/respond to OMCI messages from VOLTHA
-func RunOmciResponder(ctx context.Context, omciOut chan openolt.OmciMsg, omciIn chan openolt.OmciIndication, errch chan error) {
+func (s *Server) RunOmciResponder(ctx context.Context, omciOut chan openolt.OmciMsg, omciIn chan openolt.OmciIndication, errch chan error) {
 	go func() {
 		defer logger.Debug("Omci response process was done")
 
@@ -34,14 +33,17 @@ func RunOmciResponder(ctx context.Context, omciOut chan openolt.OmciMsg, omciIn 
 		for {
 			select {
 			case m := <-omciOut:
-				resp_pkt, err := omci.OmciSim(m.IntfId, m.OnuId, HexDecode(m.Pkt))
+				respPkt, err := omci.OmciSim(m.IntfId, m.OnuId, HexDecode(m.Pkt))
 				switch err := err.(type) {
 				case nil:
 					// Success
 					resp.IntfId = m.IntfId
 					resp.OnuId = m.OnuId
-					resp.Pkt = resp_pkt
+					resp.Pkt = respPkt
 					omciIn <- resp
+					s.handleOmciAction(resp.Pkt, resp.IntfId, resp.OnuId)
+
+
 				case *omci.OmciError:
 					// Error in processing omci message. Log and carry on.
 					logger.Debug("%s", err.Msg)
@@ -72,3 +74,17 @@ func HexDecode(pkt []byte) []byte {
 	return p
 }
 
+func (s *Server) handleOmciAction(pkt []byte, IntfID uint32, OnuID uint32) {
+	logger.Debug("handleOmciAction invoked")
+	MEClass := omci.OmciClass(uint16(pkt[5]) | uint16(pkt[4])<<8)
+	msgType := omci.OmciMsgType(pkt[2] & 0x1F)
+	logger.Debug("ME Class %d, msgType %d", MEClass, msgType)
+
+	if MEClass == omci.ONUG {
+		switch msgType {
+		case omci.Reboot:
+			logger.Info("ONU reboot recieved")
+			s.handleONUSoftReboot(IntfID, OnuID)
+		}
+	}
+}

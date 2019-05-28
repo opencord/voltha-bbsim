@@ -18,24 +18,23 @@ package core
 
 import (
 	"errors"
-	"net"
-	"strconv"
-	"time"
-
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
+	"gerrit.opencord.org/voltha-bbsim/common/utils"
+	"gerrit.opencord.org/voltha-bbsim/device"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"gerrit.opencord.org/voltha-bbsim/device"
-	"gerrit.opencord.org/voltha-bbsim/common/utils"
+	"net"
+	"strconv"
 )
 
+// RecvWorker receives the packet and forwards to the channel
 func RecvWorker(io *Ioinfo, handler *pcap.Handle, r chan Packet) {
 	logger.Debug("recvWorker runs. handler: %v", *handler)
 	packetSource := gopacket.NewPacketSource(handler, handler.LinkType())
 	for packet := range packetSource.Packets() {
 		logger.Debug("recv packet from IF: %v ", *handler)
-		//logger.Println(packet.Dump())
+		// logger.Println(packet.Dump())
 		pkt := Packet{}
 		pkt.Info = io
 		pkt.Pkt = packet
@@ -43,6 +42,7 @@ func RecvWorker(io *Ioinfo, handler *pcap.Handle, r chan Packet) {
 	}
 }
 
+// SendUni sends packet to UNI interface
 func SendUni(handle *pcap.Handle, packet gopacket.Packet, onu *device.Onu) {
 	err := handle.WritePacketData(packet.Data())
 	if err != nil {
@@ -51,15 +51,17 @@ func SendUni(handle *pcap.Handle, packet gopacket.Packet, onu *device.Onu) {
 	utils.LoggerWithOnu(onu).Debugf("Successfully send packet to UNI-IF: %v", *handle)
 }
 
+// SendNni sends packaet to NNI interface
 func SendNni(handle *pcap.Handle, packet gopacket.Packet) {
 	err := handle.WritePacketData(packet.Data())
 	if err != nil {
 		logger.Error("Error in send packet to NNI e:%s", err)
 	}
 	logger.Debug("send packet to NNI-IF: %v ", *handle)
-	//logger.Println(packet.Dump())
+	// logger.Println(packet.Dump())
 }
 
+// PopVLAN pops the vlan ans return packet
 func PopVLAN(pkt gopacket.Packet) (gopacket.Packet, uint16, error) {
 	if layer := getDot1QLayer(pkt); layer != nil {
 		if eth := getEthernetLayer(pkt); eth != nil {
@@ -84,9 +86,10 @@ func PopVLAN(pkt gopacket.Packet) (gopacket.Packet, uint16, error) {
 		}
 	}
 	return pkt, 0, nil
-	//return nil, 0, errors.New("failed to pop vlan")
+	// return nil, 0, errors.New("failed to pop vlan")
 }
 
+// PushVLAN pushes the vlan header to the packet and returns tha packet
 func PushVLAN(pkt gopacket.Packet, vid uint16, onu *device.Onu) (gopacket.Packet, error) {
 	if eth := getEthernetLayer(pkt); eth != nil {
 		ethernetLayer := &layers.Ethernet{
@@ -145,8 +148,8 @@ func getMacAddress(ifName string) net.HardwareAddr {
 }
 
 func makeNniName(oltid uint32) (upif string, dwif string) {
-	upif = NNI_VETH_NORTH_PFX + strconv.Itoa(int(oltid))
-	dwif = NNI_VETH_SOUTH_PFX + strconv.Itoa(int(oltid))
+	upif = NniVethNorthPfx + strconv.Itoa(int(oltid))
+	dwif = NniVethSouthPfx + strconv.Itoa(int(oltid))
 	return
 }
 
@@ -170,13 +173,13 @@ func setupVethHandler(inveth string, outveth string, vethnames []string) (*pcap.
 
 func getVethHandler(vethname string) (*pcap.Handle, error) {
 	var (
-		device       string = vethname
-		snapshot_len int32  = 1518
-		promiscuous  bool   = false
-		err          error
-		timeout      time.Duration = pcap.BlockForever
+		device            = vethname
+		snapshotLen int32 = 1518
+		promiscuous       = false
+		err         error
+		timeout           = pcap.BlockForever
 	)
-	handle, err := pcap.OpenLive(device, snapshot_len, promiscuous, timeout)
+	handle, err := pcap.OpenLive(device, snapshotLen, promiscuous, timeout)
 	if err != nil {
 		return nil, err
 	}

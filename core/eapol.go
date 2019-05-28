@@ -22,17 +22,19 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
+	"sync"
+
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"net"
-	"sync"
 )
 
 type clientState int
 
+// Constants for eapol states
 const (
-	EAP_START clientState = iota + 1 //TODO: This state definition should support 802.1X
+	EAP_START clientState = iota + 1 // TODO: This state definition should support 802.1X
 	EAP_RESPID
 	EAP_RESPCHA
 	EAP_SUCCESS
@@ -72,7 +74,7 @@ func getEAPResponder() *eapResponder {
 	return resp
 }
 
-//RunEapolResponder starts go routine which processes and responds for received eapol messages
+// RunEapolResponder starts go routine which processes and responds for received eapol messages
 func RunEapolResponder(ctx context.Context, eapolOut chan *byteMsg, eapolIn chan *byteMsg, errch chan error) {
 	responder := getEAPResponder()
 	responder.eapolIn = eapolIn
@@ -82,7 +84,7 @@ func RunEapolResponder(ctx context.Context, eapolOut chan *byteMsg, eapolIn chan
 		defer logger.Debug("EAPOL response process was done")
 		for {
 			select {
-			case msg := <- eapolOut:
+			case msg := <-eapolOut:
 				logger.Debug("Received eapol from eapolOut intfid:%d onuid:%d", msg.IntfId, msg.OnuId)
 				responder := getEAPResponder()
 				clients := responder.clients
@@ -136,7 +138,7 @@ func startEAPClient(intfid uint32, onuid uint32) error {
 		return errors.New("Failed to send EAPStart")
 	}
 	logger.Debug("Sending EAPStart")
-	//clients[key{intfid: intfid, onuid: onuid}] = &client
+	// clients[key{intfid: intfid, onuid: onuid}] = &client
 	resp.clients[clientKey{intfid: intfid, onuid: onuid}] = &client
 	return nil
 }
@@ -254,10 +256,10 @@ func (c *eapClientInstance) createEAPResCha(payload []byte) *layers.EAP {
 	return &eap
 }
 
-func getMD5Data (id uint8, eap *layers.EAP) []byte {
+func getMD5Data(id uint8, eap *layers.EAP) []byte {
 	i := byte(id)
 	C := []byte(eap.BaseLayer.Contents)[6:]
-	P := []byte{i, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64} //"password"
+	P := []byte{i, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64} // "password"
 	data := md5.Sum(append(P, C...))
 	ret := make([]byte, 16)
 	for j := 0; j < 16; j++ {

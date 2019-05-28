@@ -18,14 +18,16 @@ package core
 
 import (
 	"context"
-	"os/exec"
-	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"time"
-	"strconv"
-	"gerrit.opencord.org/voltha-bbsim/device"
 	"fmt"
+	"os/exec"
+	"strconv"
+	"time"
+
+	"gerrit.opencord.org/voltha-bbsim/common/logger"
+	"gerrit.opencord.org/voltha-bbsim/device"
 )
 
+// TestManager is the structure for test manager
 type TestManager struct {
 	DhcpServerIP string
 	Pid          []int
@@ -34,22 +36,25 @@ type TestManager struct {
 	cancel       context.CancelFunc
 }
 
+// Tester is the structure for Test
 type Tester struct {
-	Type string
-	Key device.Devkey
+	Type     string
+	Key      device.Devkey
 	Testfunc func(device.Devkey) error
 	Waitsec  int
-	ctx          context.Context
-	cancel       context.CancelFunc
+	ctx      context.Context
+	cancel   context.CancelFunc
 }
 
+// NewTestManager returns new TestManager
 func NewTestManager(opt *option) *TestManager {
 	t := new(TestManager)
 	t.DhcpServerIP = opt.dhcpservip
 	return t
 }
 
-func (*TestManager) CreateTester(testtype string, opt *option, key device.Devkey, fn func(device.Devkey) error, waitsec int) *Tester{
+// CreateTester creates instance of Tester
+func (*TestManager) CreateTester(testtype string, opt *option, key device.Devkey, fn func(device.Devkey) error, waitsec int) *Tester {
 	logger.Debug("CreateTester() called")
 	t := new(Tester)
 	t.Type = testtype
@@ -59,7 +64,7 @@ func (*TestManager) CreateTester(testtype string, opt *option, key device.Devkey
 	return t
 }
 
-//Blocking
+// Start does starting action - Blocking Call
 func (tm *TestManager) Start() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	tm.ctx = ctx
@@ -71,6 +76,7 @@ func (tm *TestManager) Start() error {
 	return nil
 }
 
+// Stop does stopping action
 func (tm *TestManager) Stop() error {
 	if tm.cancel != nil {
 		tm.cancel()
@@ -80,7 +86,7 @@ func (tm *TestManager) Stop() error {
 	return nil
 }
 
-func (tm *TestManager) StartTester (t *Tester) error {
+func (tm *TestManager) StartTester(t *Tester) error {
 	testtype := t.Type
 	key := t.Key
 	waitsec := t.Waitsec
@@ -99,10 +105,10 @@ func (tm *TestManager) StartTester (t *Tester) error {
 
 	L:
 		for counter < waitsec {
-			select{
+			select {
 			case <-tick.C:
-				counter ++
-				if counter == waitsec {	// TODO: This should be fixed
+				counter++
+				if counter == waitsec { // TODO: This should be fixed
 					break L
 				}
 			case <-child.Done():
@@ -120,22 +126,25 @@ func (tm *TestManager) StartTester (t *Tester) error {
 	return nil
 }
 
-func (tm *TestManager) StopTester (testtype string, key device.Devkey) error {
+// StopTester stops the test
+func (tm *TestManager) StopTester(testtype string, key device.Devkey) error {
 	ts := tm.testers[testtype][key]
 	ts.cancel()
 	delete(tm.testers[testtype], key)
 	return nil
 }
 
+// Initialize test manager
 func (tm *TestManager) Initialize() {
 	logger.Info("TestManager Initialize () called")
 	pids := tm.Pid
 	logger.Debug("Runnig Process: %v", pids)
 	KillProcesses(pids)
-	exec.Command("rm", "/var/run/dhcpd.pid").Run()    //This is for DHCP server activation
-	exec.Command("touch", "/var/run/dhcpd.pid").Run() //This is for DHCP server activation
+	exec.Command("rm", "/var/run/dhcpd.pid").Run()    // This is for DHCP server activation
+	exec.Command("touch", "/var/run/dhcpd.pid").Run() // This is for DHCP server activation
 }
 
+// KillProcesses kill process by specified pid
 func KillProcesses(pids []int) error {
 	for _, pname := range pids {
 		killProcess(pname)
@@ -170,7 +179,7 @@ func activateDHCPClient(key device.Devkey) (err error) {
 	return nil
 }
 
-func activateDHCPServer (veth string, serverip string) error {
+func activateDHCPServer(veth string, serverip string) error {
 	err := exec.Command("ip", "addr", "add", serverip, "dev", veth).Run()
 	if err != nil {
 		logger.Error("Fail to add ip to %s address: %s", veth, err)

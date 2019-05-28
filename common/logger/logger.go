@@ -26,13 +26,14 @@ var (
 	myLogger *log.Entry
 )
 
+// Setup logger
 func Setup(kafkaBroker string, level string) {
 
 	logger := log.New()
 	//logger.SetReportCaller(true)
 	myLogger = logger.WithField("topics", []string{"bbsim.log"})
 
-	var logLevel log.Level = log.DebugLevel
+	var logLevel = log.DebugLevel
 	switch level{
 		case "TRACE":
 			logLevel = log.TraceLevel
@@ -75,38 +76,47 @@ func Setup(kafkaBroker string, level string) {
 	myLogger.WithField("kafkaBroker", kafkaBroker).Debug("Logger setup done")
 }
 
+// GetLogger return logger instance
 func GetLogger() *log.Entry {
 	return myLogger
 }
 
+// WithField logs message with specified field
 func WithField(key string, value interface{}) *log.Entry {
 	return myLogger.WithField(key, value)
 }
 
+// WithFields logs message with multiple fields
 func WithFields(fields log.Fields) *log.Entry {
 	return myLogger.WithFields(fields)
 }
 
+// Panic logs with log level panic
 func Panic(msg string, args ...interface{}) {
 	myLogger.Panicf(msg, args...)
 }
 
+// Fatal logs woth loge level fatal
 func Fatal(msg string, args ...interface{}) {
 	myLogger.Fatalf(msg, args...)
 }
 
+// Error logs with log level error
 func Error(msg string, args ...interface{}) {
 	myLogger.Errorf(msg, args...)
 }
 
+// Warn logs with log level warn
 func Warn(msg string, args ...interface{}) {
 	myLogger.Warnf(msg, args...)
 }
 
+// Info logs with log level info
 func Info(msg string, args ...interface{}) {
 	myLogger.Infof(msg, args...)
 }
 
+// Debug logs with log level debug
 func Debug(msg string, args ...interface{}) {
 	myLogger.Debugf(msg, args...)
 }

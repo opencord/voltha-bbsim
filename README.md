@@ -113,4 +113,10 @@ Usage of ./bbsim:
       DHCP Server IP Address (default "182.21.0.128")
   -v int
       Interval each ONU Discovery Indication (ms) (default 1000)
+  -ia bool
+      Interactive activation of ONUs: if true ONUs must be activated explicitly using the management API (no ONUs are activated at startup) (default false)
+  -grpc int
+      Management API gRPC port (default 50061)
+  -rest int
+      Management API rest port (default 50062)
 ```

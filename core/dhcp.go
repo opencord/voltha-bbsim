@@ -21,15 +21,17 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
 	"math/rand"
 	"net"
 	"reflect"
 	"sync"
+
+	"gerrit.opencord.org/voltha-bbsim/common/logger"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 )
 
+// Constants for DHCP states
 const (
 	DHCP_INIT clientState = iota + 1
 	DHCP_SELECTING
@@ -78,6 +80,7 @@ var defaultParamsRequestList = []layers.DHCPOpt{
 	layers.DHCPOptNTPServers,
 }
 
+// RunDhcpResponder responds to the DHCP client messages
 func RunDhcpResponder(ctx context.Context, dhcpOut chan *byteMsg, dhcpIn chan *byteMsg, errch chan error) {
 	responder := getDHCPResponder()
 	responder.dhcpIn = dhcpIn
@@ -310,7 +313,7 @@ func (c *dhcpClientInstance) sendBytes(bytes []byte, dhcpIn chan *byteMsg) error
 	// Send our packet
 	msg := byteMsg{IntfId: c.key.intfid,
 		OnuId: c.key.onuid,
-		Byte: bytes}
+		Byte:  bytes}
 	dhcpIn <- &msg
 	logger.Debug("sendBytes intfid:%d onuid:%d", c.key.intfid, c.key.onuid)
 	logger.Debug(hex.Dump(msg.Byte))

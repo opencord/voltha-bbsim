@@ -17,11 +17,12 @@
 package core
 
 import (
+	"time"
+
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
 	"gerrit.opencord.org/voltha-bbsim/common/utils"
 	"gerrit.opencord.org/voltha-bbsim/device"
-	"gerrit.opencord.org/voltha-bbsim/protos"
-	"time"
+	openolt "gerrit.opencord.org/voltha-bbsim/protos"
 )
 
 func sendOltIndUp(stream openolt.Openolt_EnableIndicationServer, olt *device.Olt) error {
@@ -43,65 +44,95 @@ func sendOltIndDown(stream openolt.Openolt_EnableIndicationServer) error {
 }
 
 func sendIntfInd(stream openolt.Openolt_EnableIndicationServer, olt *device.Olt) error {
-	for i := uint32(0); i < olt.NumPonIntf+olt.NumNniIntf; i++ {
-		intf := olt.Intfs[i]
-		if intf.Type == "pon" { // There is no need to send IntfInd for NNI
-			data := &openolt.Indication_IntfInd{&openolt.IntfIndication{IntfId: intf.IntfID, OperState: intf.OperState}}
-			if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-				logger.Error("Failed to send Intf [id: %d] indication : %v", i, err)
-				return err
-			}
-			logger.Info("SendIntfInd olt:%d intf:%d (%s)", olt.ID, intf.IntfID, intf.Type)
+	// There is no need to send IntfInd for NNI
+	for i := uint32(0); i < olt.NumPonIntf; i++ {
+		intf := olt.PonIntfs[i]
+		data := &openolt.Indication_IntfInd{&openolt.IntfIndication{IntfId: intf.IntfID, OperState: intf.OperState}}
+		if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
+			logger.Error("Failed to send Intf [id: %d] indication : %v", i, err)
+			return err
 		}
+		logger.Info("SendIntfInd olt:%d intf:%d (%s)", olt.ID, intf.IntfID, intf.Type)
 	}
 	return nil
 }
 
 func sendOperInd(stream openolt.Openolt_EnableIndicationServer, olt *device.Olt) error {
-	for i := uint32(0); i < olt.NumPonIntf+olt.NumNniIntf; i++ {
-		intf := olt.Intfs[i]
+	// Send OperInd for Nni
+	for i := uint32(0); i < olt.NumNniIntf; i++ {
+		intf := olt.NniIntfs[i]
 		data := &openolt.Indication_IntfOperInd{&openolt.IntfOperIndication{Type: intf.Type, IntfId: intf.IntfID, OperState: intf.OperState}}
 		if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-			logger.Error("Failed to send IntfOper [id: %d] indication : %v", i, err)
+			logger.Error("Failed to send NNI IntfOper [id: %d] indication : %v", i, err)
 			return err
 		}
-		logger.Info("SendOperInd olt:%d intf:%d (%s)", olt.ID, intf.IntfID, intf.Type)
+		logger.Info("SendOperInd NNI olt:%d intf:%d (%s)", olt.ID, intf.IntfID, intf.Type)
 	}
-	return nil
-}
 
-func sendOnuDiscInd(stream openolt.Openolt_EnableIndicationServer, onus []*device.Onu, delay int) error {
-	for i, onu := range onus {
-		data := &openolt.Indication_OnuDiscInd{&openolt.OnuDiscIndication{IntfId: onu.IntfID, SerialNumber: onu.SerialNumber}}
-		time.Sleep(time.Duration(delay) * time.Millisecond)
+	// Send OperInd for Pon
+	for i := uint32(0); i < olt.NumPonIntf; i++ {
+		intf := olt.PonIntfs[i]
+		data := &openolt.Indication_IntfOperInd{&openolt.IntfOperIndication{Type: intf.Type, IntfId: intf.IntfID, OperState: intf.OperState}}
 		if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-			logger.Error("Failed to send ONUDiscInd [id: %d]: %v", i, err)
+			logger.Error("Failed to send PON IntfOper [id: %d] indication : %v", i, err)
 			return err
 		}
-		utils.LoggerWithOnu(onu).Info("sendONUDiscInd Onuid")
+		logger.Info("SendOperInd PON olt:%d intf:%d (%s)", olt.ID, intf.IntfID, intf.Type)
 	}
 	return nil
 }
 
-func sendOnuInd(stream openolt.Openolt_EnableIndicationServer, onus []*device.Onu, delay int) error {
-	for i, onu := range onus {
-//		time.Sleep(time.Duration(delay) * time.Millisecond)
-		data := &openolt.Indication_OnuInd{&openolt.OnuIndication{IntfId: onu.IntfID, OnuId: onu.OnuID, OperState: "up", AdminState: "up", SerialNumber: onu.SerialNumber}}
-		if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-			logger.Error("Failed to send ONUInd [id: %d]: %v", i, err)
-			return err
-		}
-		utils.LoggerWithOnu(onu).Info("sendONUInd Onuid")
-	}
-	return nil
-}
-
-func sendOnuIndtoONU(stream openolt.Openolt_EnableIndicationServer, onu *device.Onu ) {
-	time.Sleep(time.Duration(10000) * time.Millisecond)    //TODO:This sleep added because of a known race condition in VOLTHA. Can be removed after fix.
-	data := &openolt.Indication_OnuInd{&openolt.OnuIndication{IntfId: onu.IntfID, OnuId: onu.OnuID, OperState: "up", AdminState: "up", SerialNumber: onu.SerialNumber}}
+func sendOnuDiscInd(stream openolt.Openolt_EnableIndicationServer, onu *device.Onu) error {
+	data := &openolt.Indication_OnuDiscInd{OnuDiscInd: &openolt.OnuDiscIndication{IntfId: onu.IntfID, SerialNumber: onu.SerialNumber}}
 	if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
-			logger.Error("Failed to send ONUInd [id: %d]: %v", onu.OnuID, err)
+		logger.Error("Failed to send ONUDiscInd [id: %d]: %v", onu.OnuID, err)
+		return err
+	}
+	utils.LoggerWithOnu(onu).Info("sendONUDiscInd Onuid")
+	return nil
+}
+
+func sendOnuInd(stream openolt.Openolt_EnableIndicationServer, onu *device.Onu, delay int, operState string, adminState string) error {
+	time.Sleep(time.Duration(delay) * time.Millisecond)
+	data := &openolt.Indication_OnuInd{OnuInd: &openolt.OnuIndication{
+		IntfId:         onu.IntfID,
+		OnuId:          onu.OnuID,
+		OperState:      operState,
+		AdminState:     adminState,
+		SerialNumber:   onu.SerialNumber,
+	}}
+	if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
+		logger.Error("Failed to send ONUInd [id: %d]: %v", onu.OnuID, err)
+		return err
 	}
 	utils.LoggerWithOnu(onu).Info("sendONUInd Onuid")
+	return nil
+}
 
+func sendDyingGaspInd(stream openolt.Openolt_EnableIndicationServer, intfID uint32, onuID uint32) error {
+	// Form DyingGasp Indication with ONU-ID and Intf-ID
+	alarmData := &openolt.AlarmIndication_DyingGaspInd{DyingGaspInd: &openolt.DyingGaspIndication{IntfId: intfID, OnuId: onuID, Status: "on"}}
+	data := &openolt.Indication_AlarmInd{AlarmInd: &openolt.AlarmIndication{Data: alarmData}}
+
+	// Send Indication to VOLTHA
+	if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
+		logger.Error("Failed to send DyingGaspInd : %v", err)
+		return err
+	}
+	logger.Info("sendDyingGaspInd Intf-ID:%d ONU-ID:%d", intfID, onuID)
+	return nil
+}
+
+func startAlarmLoop(stream openolt.Openolt_EnableIndicationServer, alarmchan chan *openolt.Indication) {
+	logger.Debug("SendAlarm() Invoked")
+	for {
+		select {
+		case ind := <-alarmchan:
+			logger.Debug("Alarm recieved at alarm-channel to send to voltha %+v", ind)
+			err := stream.Send(ind)
+			if err != nil {
+				logger.Debug("Error occured while sending alarm indication %v", err)
+			}
+		}
+	}
 }
