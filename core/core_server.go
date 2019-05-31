@@ -499,15 +499,7 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 				logger.Debug("WARNING: This packet does not come from NNI ")
 				continue
 			}
-			onuid := nnipkt.Info.onuid
 			intfid := nnipkt.Info.intfid
-			onu, err := s.GetOnuByID(onuid, intfid)
-			if err != nil {
-				logger.Error("Failed processing NNI packet: %v", err)
-				continue
-			}
-
-			utils.LoggerWithOnu(onu).Info("Received packet from NNI in grpc Server.")
 
 			pkt := nnipkt.Pkt
 			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "nni", IntfId: intfid, Pkt: pkt.Data()}}

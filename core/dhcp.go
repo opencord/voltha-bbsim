@@ -105,7 +105,7 @@ func RunDhcpResponder(ctx context.Context, dhcpOut chan *byteMsg, dhcpIn chan *b
 }
 
 func startDHCPClient(intfid uint32, onuid uint32) error {
-	logger.Debug("startDHCPClient")
+	logger.Debug("startDHCPClient intfid:%d onuid:%d", intfid, onuid)
 	client := dhcpClientInstance{key: clientKey{intfid: intfid, onuid: onuid},
 		srcaddr:  &net.HardwareAddr{0x2e, 0x60, 0x70, 0x13, 0x07, byte(onuid)},
 		hostname: "voltha",
@@ -125,7 +125,7 @@ func startDHCPClient(intfid uint32, onuid uint32) error {
 		return errors.New("Failed to send DHCP Discovery")
 	}
 	client.curState = DHCP_SELECTING
-	logger.Debug("Sending DHCP Discovery")
+	logger.Debug("Sending DHCP Discovery intfid:%d onuid:%d", intfid, onuid)
 	resp.clients[clientKey{intfid: intfid, onuid: onuid}] = &client
 	return nil
 }
