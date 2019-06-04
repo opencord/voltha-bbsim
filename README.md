@@ -95,11 +95,11 @@ Usage of ./bbsim:
   -H string
       IP address:port (default ":50060")
   -aw int
-      Wait time (sec) for activation WPA supplicants (default 10)
+      Wait time (sec) for activation WPA supplicants after EAPOL flow entry installed (default 2)
   -d string
       Debug Level(TRACE DEBUG INFO WARN ERROR) (default "DEBUG")
   -dw int
-      Wait time (sec) for activation DHCP clients (default 20)
+      Wait time (sec) for activation DHCP clients after DHCP flow entry installed (default 2)
   -i int
       Number of PON-IF ports (default 1)
   -id int

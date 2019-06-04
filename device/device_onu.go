@@ -29,6 +29,7 @@ const (
 	ONU_INACTIVE   DeviceState = iota	//TODO: Each stage name should be more accurate
 	ONU_ACTIVE
 	ONU_OMCIACTIVE
+	ONU_AUTHENTICATED
 	ONU_FREE
 )
 

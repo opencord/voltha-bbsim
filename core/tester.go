@@ -20,32 +20,25 @@ import (
 	"context"
 	"os/exec"
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"golang.org/x/sync/errgroup"
 	"time"
 	"strconv"
 	"gerrit.opencord.org/voltha-bbsim/device"
 	"fmt"
 )
 
-const (
-	DEFAULT Mode = iota
-	AAA
-	BOTH
-)
-
-type Mode int
-
 type TestManager struct {
 	DhcpServerIP string
 	Pid          []int
-	testers      map[device.Devkey]*Tester
+	testers      map[string]map[device.Devkey]*Tester
 	ctx          context.Context
 	cancel       context.CancelFunc
 }
 
 type Tester struct {
+	Type string
 	Key device.Devkey
-	Mode Mode
+	Testfunc func(device.Devkey) error
+	Waitsec  int
 	ctx          context.Context
 	cancel       context.CancelFunc
 }
@@ -56,11 +49,13 @@ func NewTestManager(opt *option) *TestManager {
 	return t
 }
 
-func (*TestManager) CreateTester(opt *option, key device.Devkey) *Tester{
+func (*TestManager) CreateTester(testtype string, opt *option, key device.Devkey, fn func(device.Devkey) error, waitsec int) *Tester{
 	logger.Debug("CreateTester() called")
 	t := new(Tester)
-	t.Mode = opt.Mode
+	t.Type = testtype
 	t.Key = key
+	t.Testfunc = fn
+	t.Waitsec = waitsec
 	return t
 }
 
@@ -69,7 +64,9 @@ func (tm *TestManager) Start() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	tm.ctx = ctx
 	tm.cancel = cancel
-	tm.testers = map[device.Devkey]*Tester{}
+	tm.testers = make(map[string]map[device.Devkey]*Tester)
+	tm.testers["AAA"] = map[device.Devkey]*Tester{}
+	tm.testers["DHCP"] = map[device.Devkey]*Tester{}
 	logger.Info("TestManager start")
 	return nil
 }
@@ -83,67 +80,50 @@ func (tm *TestManager) Stop() error {
 	return nil
 }
 
-func (tm *TestManager) StartTester (key device.Devkey, t *Tester) error {
-	logger.Debug("StartTester called with key:%v", key)
-	if t.Mode == DEFAULT {
-		_, child := errgroup.WithContext(tm.ctx)
-		child, cancel := context.WithCancel(child)
-		t.ctx = child
-		t.cancel = cancel
-	} else if t.Mode == AAA || t.Mode == BOTH {
-		eg, child := errgroup.WithContext(tm.ctx)
-		child, cancel := context.WithCancel(child)
-		t.ctx = child
-		t.cancel = cancel
-		eg.Go(func() error {
-			err := activateWPASupplicant(key)
-			if err != nil {
-				return err
-			}
-			return nil
-		})
+func (tm *TestManager) StartTester (t *Tester) error {
+	testtype := t.Type
+	key := t.Key
+	waitsec := t.Waitsec
 
-		if t.Mode == BOTH {
-			waitForDHCP := 3
-			eg.Go(func() error {
-				tick := time.NewTicker(time.Second)
-				counter := 0
-				defer func() {
-					tick.Stop()
-					logger.Debug("exeDHCPTest Done")
-				}()
+	logger.Debug("StartTester type:%s called with key:%v", testtype, key)
+	child, cancel := context.WithCancel(tm.ctx)
+	t.ctx = child
+	t.cancel = cancel
+	go func() error {
+		tick := time.NewTicker(time.Second)
+		counter := 0
+		defer func() {
+			tick.Stop()
+			logger.Debug("Tester type:%s with key %v Done", testtype, key)
+		}()
 
-			L:
-				for counter < waitForDHCP {
-					select{
-					case <-tick.C:
-						counter ++
-						if counter == waitForDHCP {	// TODO: This should be fixed
-							break L
-						}
-					case <-child.Done():
-						return nil
-					}
+	L:
+		for counter < waitsec {
+			select{
+			case <-tick.C:
+				counter ++
+				if counter == waitsec {	// TODO: This should be fixed
+					break L
 				}
-				err := activateDHCPClient(key)
-				if err != nil {
-					return err
-				}
+			case <-child.Done():
 				return nil
-			})
+			}
 		}
-		if err := eg.Wait(); err != nil {
+		err := t.Testfunc(key)
+		if err != nil {
 			return err
 		}
-	}
-	tm.testers[key] = t
+		return nil
+	}()
+
+	tm.testers[testtype][key] = t
 	return nil
 }
 
-func (tm *TestManager) StopTester (key device.Devkey) error {
-	ts := tm.testers[key]
+func (tm *TestManager) StopTester (testtype string, key device.Devkey) error {
+	ts := tm.testers[testtype][key]
 	ts.cancel()
-	delete(tm.testers, key)
+	delete(tm.testers[testtype], key)
 	return nil
 }
 

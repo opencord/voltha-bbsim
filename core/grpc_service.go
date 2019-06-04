@@ -200,12 +200,27 @@ func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty,
 			"c_tag": flow.Action.IVid,
 		}).Debug("OLT receives FlowAdd().")
 
+
+		// EAPOL flow
 		if flow.Classifier.EthType == uint32(layers.EthernetTypeEAPOL) {
 			omcistate := omci.GetOnuOmciState(onu.IntfID, onu.OnuID)
 			if omcistate != omci.DONE {
 				logger.Warn("FlowAdd() OMCI state %d is not \"DONE\"", omci.GetOnuOmciState(onu.OnuID, onu.IntfID))
 			}
 			s.updateOnuIntState(intfid, onuid, device.ONU_OMCIACTIVE)
+		}
+
+		// DHCP flow
+		if flow.Classifier.EthType == uint32(layers.EthernetTypeIPv4) {
+			logger.Debug("Received flow's srcPort:%d dstPort:%d", flow.Classifier.SrcPort, flow.Classifier.DstPort)
+			if flow.Classifier.SrcPort == uint32(68) && flow.Classifier.DstPort == uint32(67) {
+				logger.Debug("OLT %d receives DHCP flow IntfID:%d OnuID:%d EType:%x GemPortID:%d", s.Olt.ID, flow.AccessIntfId, flow.OnuId, flow.Classifier.EthType, flow.GemportId)
+				omcistate := omci.GetOnuOmciState(onu.IntfID, onu.OnuID)
+				if omcistate != omci.DONE {
+					logger.Warn("FlowAdd() OMCI state %d is not \"DONE\"", omci.GetOnuOmciState(onu.OnuID, onu.IntfID))
+				}
+				s.updateOnuIntState(intfid, onuid, device.ONU_AUTHENTICATED)
+			}
 		}
 	}
 	return new(openolt.Empty), nil
@@ -215,7 +230,7 @@ func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty,
 func (s *Server) FlowRemove(c context.Context, flow *openolt.Flow) (*openolt.Empty, error) {
 	logger.Debug("OLT %d receives FlowRemove()", s.Olt.ID)
 	onu, err := s.GetOnuByID(uint32(flow.OnuId), uint32(flow.AccessIntfId))
-	if err == nil{
+	if err == nil {
 		utils.LoggerWithOnu(onu).WithFields(log.Fields{
 			"olt":   s.Olt.ID,
 			"c_tag": flow.Action.IVid,

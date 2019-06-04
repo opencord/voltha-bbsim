@@ -31,6 +31,14 @@ import (
 	"reflect"
 )
 
+const (
+	DEFAULT Mode = iota
+	AAA
+	BOTH
+)
+
+type Mode int
+
 type option struct {
 	address     string
 	port        uint32
@@ -54,8 +62,8 @@ func GetOptions() *option {
 	npon := flag.Int("i", 1, "Number of PON-IF ports")
 	nonus := flag.Int("n", 1, "Number of ONUs per PON-IF port")
 	modeopt := flag.String("m", "default", "Emulation mode (default, aaa, both (aaa & dhcp))")
-	aaawait := flag.Int("aw", 10, "Wait time (sec) for activation WPA supplicants")
-	dhcpwait := flag.Int("dw", 20, "Wait time (sec) for activation DHCP clients")
+	aaawait := flag.Int("aw", 2, "Wait time (sec) for activation WPA supplicants after EAPOL flow entry installed")
+	dhcpwait := flag.Int("dw", 2, "Wait time (sec) for activation DHCP clients after DHCP flow entry installed")
 	dhcpservip := flag.String("s", "182.21.0.128", "DHCP Server IP Address")
 	intvl := flag.Int("v", 1000, "Interval each Indication (ms)")
 	kafkaBroker := flag.String("k", "", "Kafka broker")
@@ -179,14 +187,29 @@ func transitOlt (current device.DeviceState, next device.DeviceState, tm *TestMa
 
 func transitOnu (key device.Devkey, current device.DeviceState, next device.DeviceState, tm *TestManager, o *option) error {
 	logger.Debug("trnsitOnu called with key: %v, current: %d, next: %d", key, current, next)
-	if current == device.ONU_ACTIVE && next == device.ONU_OMCIACTIVE {
-		t := tm.CreateTester(o, key)
-		if err := tm.StartTester(key, t); err != nil {
-			logger.Error("Cannot Start Executer error:%v", err)
+	if o.Mode == AAA || o.Mode == BOTH {
+		if current == device.ONU_ACTIVE && next == device.ONU_OMCIACTIVE {
+			t := tm.CreateTester("AAA", o, key, activateWPASupplicant, o.aaawait)
+			if err := tm.StartTester(t); err != nil {
+				logger.Error("Cannot Start AAA Executer error:%v", err)
+			}
+		} else if current == device.ONU_OMCIACTIVE && next == device.ONU_INACTIVE {
+			if err := tm.StopTester("AAA", key); err != nil {
+				logger.Error("Cannot Stop AAA Executer error:%v", err)
+			}
 		}
-	} else if current == device.ONU_OMCIACTIVE && next == device.ONU_INACTIVE {
-		if err := tm.StopTester(key); err != nil {
-			logger.Error("Cannot Start Executer error:%v", err)
+	}
+
+	if o.Mode == BOTH{
+		if current == device.ONU_OMCIACTIVE && next == device.ONU_AUTHENTICATED {
+			t := tm.CreateTester("DHCP", o, key, activateDHCPClient, o.dhcpwait)
+			if err := tm.StartTester(t); err != nil {
+				logger.Error("Cannot Start DHCP Executer error:%v", err)
+			}
+		} else if current == device.ONU_AUTHENTICATED && next == device.ONU_INACTIVE {
+			if err := tm.StopTester("DHCP", key); err != nil {
+				logger.Error("Cannot Stop DHCP Executer error:%v", err)
+			}
 		}
 	}
 	return nil
