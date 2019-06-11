@@ -1,10 +1,9 @@
 # 1. Overview & Features
 
-The BBSim (Broadband Simulator) is for emulating the control message response (e.g. OLTInd, DHCP, EAPOL, OpenOMCI messages etc..) sent from OLT and ONUs which are connected to VOLTHA Adapter (OpenOLT Adapter).
-It is implemetend as a software process which runs outside VOLTHA, and acts as if it was a OLT connected to multiple ONUs.
-This enables the scalability test of VOLTHA / ONOS without actual hardware OLT / ONUs.
-You can use BBSim container for a scalability test for VOLTHA, DHCP L2 relay (https://github.com/opencord/dhcpl2relay) and AAA (AAA (ONOS 1.10)#ActivateAAAapp) applications on ONOS.
-The difference from the existing PONsim is to focus on emulating control messages, not data-path traffic which PONsim targets.
+The BBSim (Broadband Simulator) is a software simulator for emulating the control message response (e.g. OLTInd, DHCP, EAPOL, OpenOMCI messages etc..) sent from OLT and ONUs to VOLTHA/ONOS via OpenOLT Adapter.
+This simulator is implemetend inside a Docker container, and acts as if it was a OLT device connected to multiple ONUs.
+You can use this BBSim container for a scalability test for VOLTHA, DHCP L2 relay (https://github.com/opencord/dhcpl2relay) and AAA (https://github.com/opencord/aaa) applications on ONOS.
+The difference from PONsim is that BBSim focuses on emulating control messages, not data-path traffic which PONsim targets.
 
 ```
                  +--------------------------------------------------+
