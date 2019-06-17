@@ -26,7 +26,6 @@ import (
 
 	pb "gerrit.opencord.org/voltha-bbsim/api"
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"gerrit.opencord.org/voltha-bbsim/common/utils"
 	"gerrit.opencord.org/voltha-bbsim/device"
 	flowHandler "gerrit.opencord.org/voltha-bbsim/flow"
 	openolt "gerrit.opencord.org/voltha-bbsim/protos"
@@ -169,7 +168,7 @@ func NewCore(opt *option) *Server {
 	for i := 0; i < MaxOnusPerPon; i++ {
 		oltid := s.Olt.ID
 		intfid := uint32(1)
-		sn := utils.ConvB2S(device.NewSN(oltid, intfid, uint32(i)))
+		sn := device.ConvB2S(device.NewSN(oltid, intfid, uint32(i)))
 		s.CtagMap[sn] = uint32(900 + i) // This is hard coded for BBWF
 	}
 
@@ -573,18 +572,18 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 				logger.Error("Failed to GetOnuByID:%d", onuid)
 				continue
 			}
-			sn := utils.ConvB2S(onu.SerialNumber.VendorSpecific)
+			sn := device.ConvB2S(onu.SerialNumber.VendorSpecific)
 			if ctag, ok := s.CtagMap[sn]; ok == true {
 				tagpkt, err := PushVLAN(pkt, uint16(ctag), onu)
 				if err != nil {
-					utils.LoggerWithOnu(onu).WithFields(log.Fields{
+					device.LoggerWithOnu(onu).WithFields(log.Fields{
 						"gemId": gemid,
 					}).Error("Fail to tag C-tag")
 				} else {
 					pkt = tagpkt
 				}
 			} else {
-				utils.LoggerWithOnu(onu).WithFields(log.Fields{
+				device.LoggerWithOnu(onu).WithFields(log.Fields{
 					"gemId":   gemid,
 					"cTagMap": s.CtagMap,
 				}).Error("Could not find onuid in CtagMap", onuid, sn, s.CtagMap)
@@ -609,7 +608,7 @@ func (s *Server) runMainPktLoop(ctx context.Context, stream openolt.Openolt_Enab
 			intfid := nnipkt.Info.intfid
 			onu, _ := s.GetOnuByID(onuid, intfid)
 
-			utils.LoggerWithOnu(onu).Info("Received packet from NNI in grpc Server.")
+			device.LoggerWithOnu(onu).Info("Received packet from NNI in grpc Server.")
 
 			pkt := nnipkt.Pkt
 			data = &openolt.Indication_PktInd{PktInd: &openolt.PacketIndication{IntfType: "nni", IntfId: intfid, Pkt: pkt.Data()}}
@@ -637,12 +636,12 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 		pkt, _ := layerEth.(*layers.Ethernet)
 		ethtype := pkt.EthernetType
 		if ethtype == layers.EthernetTypeEAPOL {
-			utils.LoggerWithOnu(onu).Info("Received downstream packet is EAPOL.")
+			device.LoggerWithOnu(onu).Info("Received downstream packet is EAPOL.")
 			eapolPkt := byteMsg{IntfId: intfid, OnuId: onuid, Byte: rawpkt.Data()}
 			s.eapolOut <- &eapolPkt
 			return nil
 		} else if layerDHCP := rawpkt.Layer(layers.LayerTypeDHCPv4); layerDHCP != nil {
-			utils.LoggerWithOnu(onu).WithFields(log.Fields{
+			device.LoggerWithOnu(onu).WithFields(log.Fields{
 				"payload": layerDHCP.LayerPayload(),
 				"type":    layerDHCP.LayerType().String(),
 			}).Info("Received downstream packet is DHCP.")
@@ -653,7 +652,7 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 			s.dhcpOut <- &dhcpPkt
 			return nil
 		} else {
-			utils.LoggerWithOnu(onu).Info("WARNING: Received packet is not EAPOL or DHCP")
+			device.LoggerWithOnu(onu).Warn("WARNING: Received packet is not EAPOL or DHCP")
 			return nil
 		}
 		ioinfo, err := s.identifyUniIoinfo("inside", intfid, onuid)
@@ -664,7 +663,7 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 		SendUni(handle, rawpkt, onu)
 		return nil
 	}
-	utils.LoggerWithOnu(onu).Info("WARNING: Received packet does not have layerEth")
+	device.LoggerWithOnu(onu).Info("WARNING: Received packet does not have layerEth")
 	return nil
 }
 
@@ -771,7 +770,7 @@ func (s *Server) getOnuFromSNmap(serialNumber *openolt.SerialNumber) (*device.On
 }
 
 func stringifySerialNumber(serialNum *openolt.SerialNumber) string {
-	return string(serialNum.VendorId) + utils.ConvB2S(serialNum.VendorSpecific)
+	return string(serialNum.VendorId) + device.ConvB2S(serialNum.VendorSpecific)
 }
 
 func getOpenoltSerialNumber(SerialNumber string) (*openolt.SerialNumber, error) {

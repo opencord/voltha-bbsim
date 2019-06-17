@@ -14,32 +14,23 @@
  * limitations under the License.
  */
 
-package utils
+package device
 
 import (
-	"strconv"
+	"fmt"
 
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"gerrit.opencord.org/voltha-bbsim/device"
 	log "github.com/sirupsen/logrus"
+	"strconv"
 )
 
-// ConvB2S converts byte array to string
-func ConvB2S(b []byte) string {
-	s := ""
-	for _, i := range b {
-		s = s + strconv.FormatInt(int64(i/16), 16) + strconv.FormatInt(int64(i%16), 16)
-	}
-	return s
+func OnuToSn(onu *Onu) string {
+	// FIXME
+	// see https://github.com/opencord/voltha/blob/master/voltha/adapters/openolt/openolt_device.py#L929-L943
+	return string(onu.SerialNumber.VendorId) + "00000" + fmt.Sprint(onu.IntfID) + "0" + fmt.Sprintf("%x", onu.OnuID-1)
 }
 
-// OnuToSn returns serial number in string format for given ONU
-func OnuToSn(onu *device.Onu) string {
-	return string(onu.SerialNumber.VendorId) + ConvB2S(onu.SerialNumber.VendorSpecific)
-}
-
-// LoggerWithOnu method logs ONU fields
-func LoggerWithOnu(onu *device.Onu) *log.Entry {
+func LoggerWithOnu(onu *Onu) *log.Entry {
 
 	if onu == nil {
 		logger.Warn("utils.LoggerWithOnu has been called without Onu")
@@ -48,8 +39,16 @@ func LoggerWithOnu(onu *device.Onu) *log.Entry {
 
 	return logger.GetLogger().WithFields(log.Fields{
 		"serial_number": OnuToSn(onu),
-		"interfaceID":   onu.IntfID,
-		"onuID":         onu.OnuID,
-		"oltID":         onu.OltID,
+		"interfaceId":   onu.IntfID,
+		"onuId":         onu.OnuID,
+		"oltId":         onu.OltID,
 	})
+}
+
+func ConvB2S(b []byte) string {
+	s := ""
+	for _, i := range b {
+		s = s + strconv.FormatInt(int64(i/16), 16) + strconv.FormatInt(int64(i%16), 16)
+	}
+	return s
 }

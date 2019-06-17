@@ -20,7 +20,6 @@ import (
 	"net"
 
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"gerrit.opencord.org/voltha-bbsim/common/utils"
 	"gerrit.opencord.org/voltha-bbsim/device"
 	flowHandler "gerrit.opencord.org/voltha-bbsim/flow"
 	openolt "gerrit.opencord.org/voltha-bbsim/protos"
@@ -187,12 +186,12 @@ func (s *Server) OnuPacketOut(c context.Context, packet *openolt.OnuPacket) (*op
 		logger.Error("Failed in OnuPacketOut, %v", err)
 		return new(openolt.Empty), err
 	}
-	utils.LoggerWithOnu(onu).Debugf("OLT %d receives OnuPacketOut () to IF-ID:%d ONU-ID %d.", s.Olt.ID, packet.IntfId, packet.OnuId)
+	device.LoggerWithOnu(onu).Debugf("OLT %d receives OnuPacketOut () to IF-ID:%d ONU-ID %d.", s.Olt.ID, packet.IntfId, packet.OnuId)
 	onuid := packet.OnuId
 	intfid := packet.IntfId
 	rawpkt := gopacket.NewPacket(packet.Pkt, layers.LayerTypeEthernet, gopacket.Default)
 	if err := s.onuPacketOut(intfid, onuid, rawpkt); err != nil {
-		utils.LoggerWithOnu(onu).WithField("error", err).Errorf("OnuPacketOut Error ")
+		device.LoggerWithOnu(onu).WithField("error", err).Errorf("OnuPacketOut Error ")
 		return new(openolt.Empty), err
 	}
 	return new(openolt.Empty), nil
@@ -234,7 +233,7 @@ func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty,
 	if err == nil {
 		onu.GemportID = uint16(flow.GemportId)
 
-		utils.LoggerWithOnu(onu).WithFields(log.Fields{
+		device.LoggerWithOnu(onu).WithFields(log.Fields{
 			"olt":   s.Olt.ID,
 			"c_tag": flow.Action.IVid,
 		}).Debug("OLT receives FlowAdd().")
@@ -293,7 +292,7 @@ func (s *Server) FlowRemove(c context.Context, flow *openolt.Flow) (*openolt.Emp
 	} else {
 		// Delete flowID from onu
 		onu.DeleteFlowID(flow.FlowId)
-		utils.LoggerWithOnu(onu).WithFields(log.Fields{
+		device.LoggerWithOnu(onu).WithFields(log.Fields{
 			"olt":   s.Olt.ID,
 			"c_tag": flow.Action.IVid,
 		}).Debug("OLT receives FlowRemove().")

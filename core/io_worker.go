@@ -18,14 +18,14 @@ package core
 
 import (
 	"errors"
+	"net"
+	"strconv"
+
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"gerrit.opencord.org/voltha-bbsim/common/utils"
 	"gerrit.opencord.org/voltha-bbsim/device"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"net"
-	"strconv"
 )
 
 // RecvWorker receives the packet and forwards to the channel
@@ -46,9 +46,9 @@ func RecvWorker(io *Ioinfo, handler *pcap.Handle, r chan Packet) {
 func SendUni(handle *pcap.Handle, packet gopacket.Packet, onu *device.Onu) {
 	err := handle.WritePacketData(packet.Data())
 	if err != nil {
-		utils.LoggerWithOnu(onu).Errorf("Error in send packet to UNI-IF: %v e:%v", *handle, err)
+		device.LoggerWithOnu(onu).Errorf("Error in send packet to UNI-IF: %v e:%v", *handle, err)
 	}
-	utils.LoggerWithOnu(onu).Debugf("Successfully send packet to UNI-IF: %v", *handle)
+	device.LoggerWithOnu(onu).Debugf("Successfully send packet to UNI-IF: %v", *handle)
 }
 
 // SendNni sends packaet to NNI interface
@@ -117,7 +117,7 @@ func PushVLAN(pkt gopacket.Packet, vid uint16, onu *device.Onu) (gopacket.Packet
 			layers.LayerTypeEthernet,
 			gopacket.Default,
 		)
-		utils.LoggerWithOnu(onu).Debugf("Push the 802.1Q header (VID: %d)", vid)
+		device.LoggerWithOnu(onu).Debugf("Push the 802.1Q header (VID: %d)", vid)
 		return ret, nil
 	}
 	return nil, errors.New("failed to push vlan")
@@ -177,7 +177,7 @@ func getVethHandler(vethname string) (*pcap.Handle, error) {
 		snapshotLen int32 = 1518
 		promiscuous       = false
 		err         error
-		timeout           = pcap.BlockForever
+		timeout     = pcap.BlockForever
 	)
 	handle, err := pcap.OpenLive(device, snapshotLen, promiscuous, timeout)
 	if err != nil {

@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"gerrit.opencord.org/voltha-bbsim/common/utils"
 	"gerrit.opencord.org/voltha-bbsim/device"
 	openolt "gerrit.opencord.org/voltha-bbsim/protos"
 )
@@ -88,24 +87,24 @@ func sendOnuDiscInd(stream openolt.Openolt_EnableIndicationServer, onu *device.O
 		logger.Error("Failed to send ONUDiscInd [id: %d]: %v", onu.OnuID, err)
 		return err
 	}
-	utils.LoggerWithOnu(onu).Info("sendONUDiscInd Onuid")
+	device.LoggerWithOnu(onu).Info("sendONUDiscInd Onuid")
 	return nil
 }
 
 func sendOnuInd(stream openolt.Openolt_EnableIndicationServer, onu *device.Onu, delay int, operState string, adminState string) error {
 	time.Sleep(time.Duration(delay) * time.Millisecond)
 	data := &openolt.Indication_OnuInd{OnuInd: &openolt.OnuIndication{
-		IntfId:         onu.IntfID,
-		OnuId:          onu.OnuID,
-		OperState:      operState,
-		AdminState:     adminState,
-		SerialNumber:   onu.SerialNumber,
+		IntfId:       onu.IntfID,
+		OnuId:        onu.OnuID,
+		OperState:    operState,
+		AdminState:   adminState,
+		SerialNumber: onu.SerialNumber,
 	}}
 	if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
 		logger.Error("Failed to send ONUInd [id: %d]: %v", onu.OnuID, err)
 		return err
 	}
-	utils.LoggerWithOnu(onu).Info("sendONUInd Onuid")
+	device.LoggerWithOnu(onu).Info("sendONUInd Onuid")
 	return nil
 }
 

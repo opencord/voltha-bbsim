@@ -17,9 +17,10 @@
 package logger
 
 import (
+	"time"
+
 	lkh "github.com/gfremex/logrus-kafka-hook"
 	log "github.com/sirupsen/logrus"
-	"time"
 )
 
 var (
@@ -34,17 +35,17 @@ func Setup(kafkaBroker string, level string) {
 	myLogger = logger.WithField("topics", []string{"bbsim.log"})
 
 	var logLevel = log.DebugLevel
-	switch level{
-		case "TRACE":
-			logLevel = log.TraceLevel
-		case "INFO":
-			logLevel = log.InfoLevel
-		case "WARN":
-			logLevel = log.WarnLevel
-		case "ERROR":
-			logLevel = log.ErrorLevel
-		default:
-			logLevel = log.DebugLevel
+	switch level {
+	case "TRACE":
+		logLevel = log.TraceLevel
+	case "INFO":
+		logLevel = log.InfoLevel
+	case "WARN":
+		logLevel = log.WarnLevel
+	case "ERROR":
+		logLevel = log.ErrorLevel
+	default:
+		logLevel = log.DebugLevel
 	}
 	logger.Println("Setting Log Level ", logLevel)
 	logger.SetLevel(logLevel)

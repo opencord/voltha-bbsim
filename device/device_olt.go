@@ -48,8 +48,8 @@ type Olt struct {
 	Name               string
 	InternalState      DeviceState
 	OperState          string
-	NniIntfs		   []nniIntf
-	PonIntfs		   []ponIntf
+	NniIntfs           []nniIntf
+	PonIntfs           []ponIntf
 	HeartbeatSignature uint32
 	mu                 *sync.Mutex
 }

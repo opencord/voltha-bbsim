@@ -18,6 +18,7 @@ package core
 
 import (
 	"context"
+
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
 	openolt "gerrit.opencord.org/voltha-bbsim/protos"
 	omci "github.com/opencord/omci-sim"
@@ -42,7 +43,6 @@ func (s *Server) RunOmciResponder(ctx context.Context, omciOut chan openolt.Omci
 					resp.Pkt = respPkt
 					omciIn <- resp
 					s.handleOmciAction(resp.Pkt, resp.IntfId, resp.OnuId)
-
 
 				case *omci.OmciError:
 					// Error in processing omci message. Log and carry on.

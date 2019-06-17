@@ -22,15 +22,13 @@ import (
 	"net/http"
 	"sync"
 
-	"gerrit.opencord.org/voltha-bbsim/device"
-
 	pb "gerrit.opencord.org/voltha-bbsim/api"
+	"gerrit.opencord.org/voltha-bbsim/common/logger"
+	"gerrit.opencord.org/voltha-bbsim/device"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"gerrit.opencord.org/voltha-bbsim/common/logger"
 )
 
 // Response Constants
