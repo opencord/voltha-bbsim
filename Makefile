@@ -24,7 +24,7 @@ prereq:
 	go get -v github.com/golang/protobuf/protoc-gen-go
 	go get -v github.com/grpc-ecosystem/grpc-gateway/protoc-gen-swagger
 	go get -v github.com/google/gopacket
-	go get -v github.com/opencord/omci-sim
+	go get -u -v github.com/opencord/omci-sim
 
 bbsim: prereq protos/openolt.pb.go bbsimapi dep
 	go build -i -v -o $@
@@ -46,7 +46,7 @@ bbsimapi: api/bbsim.proto
 	-I${GOPATH}/src/github.com/grpc-ecosystem/grpc-gateway \
 	--go_out=plugins=grpc:api/ \
 	--grpc-gateway_out=logtostderr=true,allow_delete_body=true:api/ \
-	bbsim.proto
+	api/bbsim.proto
 
 swagger:						 ## Generate swagger documentation for BBsim API
 	@protoc -I ./api \
