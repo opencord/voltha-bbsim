@@ -220,7 +220,7 @@ func transitOnu(key device.Devkey, current device.DeviceState, next device.Devic
 	}
 
 	if o.Mode == BOTH {
-		if current == device.ONU_OMCIACTIVE && next == device.ONU_AUTHENTICATED {
+		if current == device.ONU_OMCIACTIVE {
 			t := tm.CreateTester("DHCP", o, key, activateDHCPClient, o.dhcpwait)
 			if err := tm.StartTester(t); err != nil {
 				logger.Error("Cannot Start DHCP Executer error:%v", err)

@@ -240,6 +240,7 @@ func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty,
 
 		// EAPOL flow
 		if flow.Classifier.EthType == uint32(layers.EthernetTypeEAPOL) {
+			logger.Debug("OLT %d receives EAPOL flow IntfID:%d OnuID:%d EType:%x", s.Olt.ID, flow.AccessIntfId, flow.OnuId, flow.Classifier.EthType)
 			omcistate := omci.GetOnuOmciState(onu.IntfID, onu.OnuID)
 			if omcistate != omci.DONE {
 				logger.Warn("FlowAdd() OMCI state %d is not \"DONE\"", omci.GetOnuOmciState(onu.OnuID, onu.IntfID))

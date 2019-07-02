@@ -42,10 +42,11 @@ var ONUState = map[DeviceState]string{
 	ONU_INACTIVE:                "ONU_INACTIVE",
 	ONU_ACTIVE:                  "ONU_ACTIVE",
 	ONU_OMCIACTIVE:              "ONU_OMCIACTIVE",
-	ONU_FREE:                    "ONU_FREE",
+	ONU_AUTHENTICATED:           "ONU_AUTHENTICATED",
 	ONU_LOS_RAISED:              "ONU_LOS_RAISED",
 	ONU_OMCI_CHANNEL_LOS_RAISED: "ONU_OMCI_CHANNEL_LOS_RAISED",
 	ONU_LOS_ON_OLT_PON_LOS:      "ONU_LOS_ON_OLT_PON_LOS",
+	ONU_FREE:                    "ONU_FREE",
 }
 
 // Onu structure stores information of ONUs
