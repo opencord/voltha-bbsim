@@ -16,6 +16,19 @@ BBSIM_DEPS  = $(wildcard ./*.go)
 DOCKERTAG  ?= "latest"
 REGISTRY ?= ""
 
+## Docker related
+DOCKER_REGISTRY          ?=
+DOCKER_REPOSITORY        ?=
+DOCKER_BUILD_ARGS        ?=
+DOCKER_TAG               ?= ${VERSION}
+DOCKER_IMAGENAME         := ${DOCKER_REGISTRY}${DOCKER_REPOSITORY}${SYNCHRONIZER_NAME}:${DOCKER_TAG}
+
+## Docker labels. Only set ref and commit date if committed
+DOCKER_LABEL_VCS_URL     ?= $(shell git remote get-url $(shell git remote))
+DOCKER_LABEL_VCS_REF     ?= $(shell git diff-index --quiet HEAD -- && git rev-parse HEAD || echo "unknown")
+DOCKER_LABEL_COMMIT_DATE ?= $(shell git diff-index --quiet HEAD -- && git show -s --format=%cd --date=iso-strict HEAD || echo "unknown" )
+DOCKER_LABEL_BUILD_DATE  ?= $(shell date -u "+%Y-%m-%dT%H:%M:%SZ")
+
 .PHONY: dep test clean docker
 
 prereq:
@@ -76,6 +89,9 @@ clean:
 	        api/bbsim.pb.gw.go \
 	        api/swagger/*.json
 
-docker:
+docker-build:
 	docker build -t ${REGISTRY}voltha/voltha-bbsim:${DOCKERTAG} .
 	docker save voltha/voltha-bbsim:${DOCKERTAG} -o voltha-bbsim_${DOCKERTAG}.tgz
+
+docker-push:
+	docker push ${DOCKER_IMAGENAME}
