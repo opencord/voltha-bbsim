@@ -13,7 +13,7 @@
 # limitations under the License.
 
 BBSIM_DEPS  = $(wildcard ./*.go)
-DOCKERTAG  ?= "latest"
+DOCKER_TAG  ?= "latest"
 REGISTRY ?= ""
 
 ## Docker related
@@ -91,7 +91,7 @@ clean:
 
 docker-build:
 	docker build -t ${REGISTRY}voltha/voltha-bbsim:${DOCKERTAG} .
-	docker save voltha/voltha-bbsim:${DOCKERTAG} -o voltha-bbsim_${DOCKERTAG}.tgz
+	docker save voltha/voltha-bbsim:${DOCKER_TAG} -o voltha-bbsim_${DOCKERTAG}.tgz
 
 docker-push:
 	docker push ${DOCKER_IMAGENAME}
