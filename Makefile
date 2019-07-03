@@ -13,15 +13,12 @@
 # limitations under the License.
 
 BBSIM_DEPS  = $(wildcard ./*.go)
-DOCKER_TAG  ?= "latest"
-REGISTRY ?= ""
+VERSION     ?= $(shell cat ./VERSION)
+DOCKER_TAG  ?= ${VERSION}
 
 ## Docker related
-DOCKER_REGISTRY          ?=
-DOCKER_REPOSITORY        ?=
 DOCKER_BUILD_ARGS        ?=
 DOCKER_TAG               ?= ${VERSION}
-DOCKER_IMAGENAME         := ${DOCKER_REGISTRY}${DOCKER_REPOSITORY}${SYNCHRONIZER_NAME}:${DOCKER_TAG}
 
 ## Docker labels. Only set ref and commit date if committed
 DOCKER_LABEL_VCS_URL     ?= $(shell git remote get-url $(shell git remote))
@@ -90,8 +87,8 @@ clean:
 	        api/swagger/*.json
 
 docker-build:
-	docker build -t ${REGISTRY}voltha/voltha-bbsim:${DOCKERTAG} .
-	docker save voltha/voltha-bbsim:${DOCKER_TAG} -o voltha-bbsim_${DOCKERTAG}.tgz
+	docker build -t voltha/voltha-bbsim:${DOCKER_TAG} .
+	docker save voltha/voltha-bbsim:${DOCKER_TAG} -o voltha-bbsim_${DOCKER_TAG}.tgz
 
 docker-push:
-	docker push ${DOCKER_IMAGENAME}
+	docker push voltha/voltha-bbsim:${DOCKER_TAG}
