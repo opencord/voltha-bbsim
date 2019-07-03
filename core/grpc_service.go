@@ -318,6 +318,20 @@ func (s *Server) EnablePonIf(c context.Context, intf *openolt.Interface) (*openo
 	return new(openolt.Empty), nil
 }
 
+func (s *Server) GetPonIf(c context.Context, intf *openolt.Interface) (*openolt.IntfIndication, error){
+	logger.Debug("OLT %d receives GetPonIf().", s.Olt.ID)
+	stat := new(openolt.IntfIndication)
+
+	if intf.IntfId > (s.Olt.NumPonIntf-1){
+		logger.Error("PON ID %d out of bounds. %d ports total", intf.IntfId, s.Olt.NumPonIntf)
+		return stat, status.Errorf(codes.OutOfRange, "PON ID %d out of bounds. %d ports total (indexing starts at 0)", intf.IntfId, s.Olt.NumPonIntf)
+	} else{
+		stat.IntfId = intf.IntfId
+		stat.OperState = "up"
+		return stat, nil
+	}
+}
+
 func (s *Server) DisablePonIf(c context.Context, intf *openolt.Interface) (*openolt.Empty, error) {
 	logger.Debug("OLT %d receives DisablePonIf().", s.Olt.ID)
 	return new(openolt.Empty), nil
