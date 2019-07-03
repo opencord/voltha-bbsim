@@ -107,6 +107,7 @@ type FlowKey struct {
 	FlowDirection string
 }
 
+//Has options (OLT id, number onu ports) from mediator
 // NewCore initialize OLT and ONU objects
 func NewCore(opt *option) *Server {
 	// TODO: make it decent
