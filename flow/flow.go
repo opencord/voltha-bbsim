@@ -17,20 +17,28 @@
 package flow
 
 import (
+	"math/rand"
+	"time"
+
+	"github.com/google/gopacket"
 	"github.com/opencord/voltha-bbsim/common/logger"
+	"github.com/opencord/voltha-bbsim/device"
 	openolt "github.com/opencord/voltha-protos/go/openolt"
 	log "github.com/sirupsen/logrus"
 )
 
-var flowManager FlowManager
+var flowManager Manager
 
-// FlowManager interface for common methods of controller
-type FlowManager interface {
+// Manager interface for common methods of controller
+type Manager interface {
 	AddFlow(flow *openolt.Flow) error
 	DeleteFlow(flow *openolt.Flow) error
+	DeleteAllFlows() error
 	PortUp(portID uint32) error
 	PortDown(portID uint32) error
 	GetFlow(onuID uint32) ([]*openolt.Flow, error)
+	InitializePacketInStream(s openolt.Openolt_EnableIndicationServer)
+	PacketOut(packet gopacket.Packet, s string, u uint32) error
 }
 
 // DefaultFlowController empty struct
@@ -45,6 +53,11 @@ func InitializeFlowManager(OltID uint32) {
 	return
 }
 
+// InitializePacketInStream initializes the stream to send packets towards VOLTHA
+func InitializePacketInStream(s openolt.Openolt_EnableIndicationServer) {
+	flowManager.InitializePacketInStream(s)
+}
+
 // AddFlow abstracts actual implementation of flow addition
 func AddFlow(flow *openolt.Flow) error {
 	return flowManager.AddFlow(flow)
@@ -53,6 +66,11 @@ func AddFlow(flow *openolt.Flow) error {
 // DeleteFlow abstracts actual implementation of flow deletion
 func DeleteFlow(flow *openolt.Flow) error {
 	return flowManager.DeleteFlow(flow)
+}
+
+// DeleteAllFlows abstracts actual implementation of flow deletion
+func DeleteAllFlows() error {
+	return flowManager.DeleteAllFlows()
 }
 
 // PortUp abstracts actual implementation of port up
@@ -65,8 +83,43 @@ func PortDown(portID uint32) error {
 	return flowManager.PortDown(portID)
 }
 
+// PacketOut abstracts actual implementation of sending packet out
+func PacketOut(packet gopacket.Packet, intfType string, intfID uint32) error {
+	return flowManager.PacketOut(packet, intfType, intfID)
+}
+
+// GetPortStats return stats for specified interface
+func GetPortStats(portStats *device.PortStats) *openolt.PortStatistics {
+
+	// increment current packet count by random number
+	pkts := portStats.Packets + uint64((rand.Intn(50)+1)*10)
+	portStats.Packets = pkts
+	logger.Info("Packet count %d", portStats.Packets)
+
+	// fill all other stats based on packet count
+	nextPortStats := &openolt.PortStatistics{
+		RxBytes:        pkts * 64,
+		RxPackets:      pkts,
+		RxUcastPackets: pkts * 40 / 100,
+		RxMcastPackets: pkts * 30 / 100,
+		RxBcastPackets: pkts * 30 / 100,
+		RxErrorPackets: 0,
+		TxBytes:        pkts * 64,
+		TxPackets:      pkts,
+		TxUcastPackets: pkts * 40 / 100,
+		TxMcastPackets: pkts * 30 / 100,
+		TxBcastPackets: pkts * 30 / 100,
+		TxErrorPackets: 0,
+		RxCrcErrors:    0,
+		BipErrors:      0,
+		Timestamp:      uint32(time.Now().Unix()),
+	}
+
+	return nextPortStats
+}
+
 // InitializeDefaultFlowController method to initialize default controller
-func InitializeDefaultFlowController() FlowManager {
+func InitializeDefaultFlowController() Manager {
 	logger.Debug("Default controller initialized")
 	return new(DefaultFlowController)
 }
@@ -90,6 +143,12 @@ func (fc *DefaultFlowController) DeleteFlow(flow *openolt.Flow) error {
 	return nil
 }
 
+// DeleteAllFlows implemented for DefaultFlowController
+func (fc *DefaultFlowController) DeleteAllFlows() error {
+	logger.Debug("DeleteAllFlows invoked")
+	return nil
+}
+
 // GetFlow implemented for DefaultFlowController
 func (fc *DefaultFlowController) GetFlow(onuID uint32) ([]*openolt.Flow, error) {
 	return nil, nil
@@ -104,5 +163,16 @@ func (fc *DefaultFlowController) PortUp(portID uint32) error {
 // PortDown implemented for DefaultFlowController
 func (fc *DefaultFlowController) PortDown(portID uint32) error {
 	logger.Debug("PortDown invoked %d", portID)
+	return nil
+}
+
+// InitializePacketInStream implemented for DefaultFlowController
+func (fc *DefaultFlowController) InitializePacketInStream(s openolt.Openolt_EnableIndicationServer) {
+	logger.Debug("Initialize Openolt stream")
+}
+
+// PacketOut implemented for DefaultFlowController
+func (fc *DefaultFlowController) PacketOut(pkt gopacket.Packet, intfType string, intfID uint32) error {
+	logger.Debug("PacketOut invoked intfType: %s, intfID: %d", intfType, intfID)
 	return nil
 }

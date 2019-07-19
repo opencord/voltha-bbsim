@@ -17,7 +17,6 @@
 package core
 
 import (
-	"github.com/opencord/voltha-protos/go/tech_profile"
 	"net"
 
 	"github.com/google/gopacket"
@@ -27,6 +26,7 @@ import (
 	"github.com/opencord/voltha-bbsim/device"
 	flowHandler "github.com/opencord/voltha-bbsim/flow"
 	openolt "github.com/opencord/voltha-protos/go/openolt"
+	"github.com/opencord/voltha-protos/go/tech_profile"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -62,6 +62,7 @@ func (s *Server) ReenableOlt(c context.Context, empty *openolt.Empty) (*openolt.
 	}
 
 	if s.EnableServer != nil {
+		s.Olt.OperState = "up"
 		if err := sendOltIndUp(*s.EnableServer, s.Olt); err != nil {
 			logger.Error("Failed to send OLT UP indication for reenable OLT: %v", err)
 			return new(openolt.Empty), err
@@ -102,16 +103,16 @@ func (s *Server) GetDeviceInfo(c context.Context, empty *openolt.Empty) (*openol
 
 // ActivateOnu method handles ONU activation request from VOLTHA
 func (s *Server) ActivateOnu(c context.Context, onu *openolt.Onu) (*openolt.Empty, error) {
-	logger.Debug("OLT receives ActivateONU()")
+	logger.Trace("OLT receives ActivateONU()")
 
 	matched, exist := s.getOnuFromSNmap(onu.SerialNumber)
 	if !exist {
-		logger.Fatal("ONU not found with serial nnumber %v", onu.SerialNumber)
+		logger.Error("ONU not found with serial nnumber %v", onu.SerialNumber)
 		return new(openolt.Empty), status.Errorf(codes.NotFound, "ONU not found with serial number %v", onu.SerialNumber)
 	}
 	onuid := onu.OnuId
 	matched.OnuID = onuid
-	s.updateDevIntState(matched, device.ONU_ACTIVE)
+	s.updateDevIntState(matched, device.OnuActive)
 	logger.Debug("ONU IntfID: %d OnuID: %d activated succesufully.", onu.IntfId, onu.OnuId)
 	if err := sendOnuInd(*s.EnableServer, matched, "up", "up"); err != nil {
 		logger.Error("Failed to send ONU Indication intfID %d, onuID %d", matched.IntfID, matched.OnuID)
@@ -122,14 +123,29 @@ func (s *Server) ActivateOnu(c context.Context, onu *openolt.Onu) (*openolt.Empt
 }
 
 // CreateTrafficSchedulers method should handle TrafficScheduler creation
-func (s *Server) CreateTrafficSchedulers(context.Context, *tech_profile.TrafficSchedulers) (*openolt.Empty, error) {
-	logger.Debug("OLT receives CreateTrafficSchedulers()")
+func (s *Server) CreateTrafficSchedulers(c context.Context, traffScheduler *tech_profile.TrafficSchedulers) (*openolt.Empty, error) {
+	logger.Debug("OLT receives CreateTrafficSchedulers %v", traffScheduler)
+	onu, err := s.GetOnuByID(traffScheduler.OnuId, traffScheduler.IntfId)
+	if err != nil {
+		return new(openolt.Empty), err
+	}
+	onu.Tconts = traffScheduler
 	return new(openolt.Empty), nil
 }
 
 // RemoveTrafficSchedulers method should handle TrafficScheduler removal
-func (s *Server) RemoveTrafficSchedulers(context.Context, *tech_profile.TrafficSchedulers) (*openolt.Empty, error) {
-	logger.Debug("OLT receives RemoveTrafficSchedulers()")
+func (s *Server) RemoveTrafficSchedulers(c context.Context, traffScheduler *tech_profile.TrafficSchedulers) (*openolt.Empty, error) {
+	logger.Debug("OLT receives RemoveTrafficSchedulers %v", traffScheduler)
+	onu, err := s.GetOnuByID(traffScheduler.OnuId, traffScheduler.IntfId)
+	if err != nil {
+		return new(openolt.Empty), err
+	}
+	for _, tcont := range traffScheduler.TrafficScheds {
+		if _, exist := onu.GemPortMap[tcont.AllocId]; exist {
+			delete(onu.GemPortMap, tcont.AllocId)
+		}
+	}
+	onu.Tconts = nil
 	return new(openolt.Empty), nil
 }
 
@@ -160,7 +176,7 @@ func (s *Server) DeleteOnu(c context.Context, onu *openolt.Onu) (*openolt.Empty,
 	}
 
 	// Mark ONU internal state as ONU_FREE and reset onuID
-	Onu.InternalState = device.ONU_FREE
+	Onu.InternalState = device.OnuFree
 	Onu.OnuID = 0
 
 	// Get snMap key for the ONU serial number
@@ -172,6 +188,7 @@ func (s *Server) DeleteOnu(c context.Context, onu *openolt.Onu) (*openolt.Empty,
 	return new(openolt.Empty), nil
 }
 
+// GetOnuInfo returns ONU info to VOLTHA
 func (s *Server) GetOnuInfo(c context.Context, onu *openolt.Onu) (*openolt.OnuIndication, error) {
 	logger.Debug("Olt receives GetOnuInfo() intfID: %d, onuID: %d", onu.IntfId, onu.OnuId)
 	Onu, err := s.GetOnuByID(onu.OnuId, onu.IntfId)
@@ -199,8 +216,8 @@ func (s *Server) OmciMsgOut(c context.Context, msg *openolt.OmciMsg) (*openolt.E
 	state := onu.GetIntState()
 	logger.Debug("ONU-ID: %v, ONU state: %d", msg.OnuId, state)
 
-	// If ONU is ONU_INACTIVE, ONU_FREE or ONU_OMCI_CHANNEL_LOS_RAISED drop
-	if state != device.ONU_ACTIVE && state != device.ONU_OMCIACTIVE && state != device.ONU_AUTHENTICATED {
+	// If ONU is not ACTIVE drop OMCI message
+	if state < device.OnuActive {
 		logger.Info("ONU (IF %v ONU-ID: %v) is not ACTIVE, so not processing OmciMsg", msg.IntfId, msg.OnuId)
 		return new(openolt.Empty), nil
 	}
@@ -208,6 +225,7 @@ func (s *Server) OmciMsgOut(c context.Context, msg *openolt.OmciMsg) (*openolt.E
 	return new(openolt.Empty), nil
 }
 
+// OnuPacketOut is used by voltha to send OnuPackets to BBSIM
 func (s *Server) OnuPacketOut(c context.Context, packet *openolt.OnuPacket) (*openolt.Empty, error) {
 	onu, err := s.GetOnuByID(packet.OnuId, packet.IntfId)
 	if err != nil {
@@ -225,6 +243,7 @@ func (s *Server) OnuPacketOut(c context.Context, packet *openolt.OnuPacket) (*op
 	return new(openolt.Empty), nil
 }
 
+// UplinkPacketOut sends uplink packets to BBSIM
 func (s *Server) UplinkPacketOut(c context.Context, packet *openolt.UplinkPacket) (*openolt.Empty, error) {
 	logger.Debug("OLT %d receives UplinkPacketOut().", s.Olt.ID)
 	rawpkt := gopacket.NewPacket(packet.Pkt, layers.LayerTypeEthernet, gopacket.Default)
@@ -238,7 +257,7 @@ func (s *Server) UplinkPacketOut(c context.Context, packet *openolt.UplinkPacket
 func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty, error) {
 	logger.Debug("OLT %d receives FlowAdd() %v", s.Olt.ID, flow)
 	// Check if flow already present
-	flowKey := FlowKey{
+	flowKey := device.FlowKey{
 		FlowID:        flow.FlowId,
 		FlowDirection: flow.FlowType,
 	}
@@ -251,7 +270,6 @@ func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty,
 	err := flowHandler.AddFlow(flow)
 	if err != nil {
 		logger.Error("Error in pushing flow to datapath")
-		return new(openolt.Empty), err
 	}
 
 	// Update flowMap
@@ -259,12 +277,18 @@ func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty,
 
 	onu, err := s.GetOnuByID(uint32(flow.OnuId), uint32(flow.AccessIntfId))
 	if err == nil {
-		onu.GemportID = uint16(flow.GemportId)
-
-		device.LoggerWithOnu(onu).WithFields(log.Fields{
-			"olt":   s.Olt.ID,
-			"c_tag": flow.Action.IVid,
-		}).Debug("OLT receives FlowAdd().")
+		exist := false
+		// check if gemport already present in ONU
+		for _, gemport := range onu.GemPortMap[uint32(flow.AllocId)] {
+			if gemport == uint32(flow.GemportId) {
+				exist = true
+				break
+			}
+		}
+		// if not present already, then append in gemport list
+		if !exist {
+			onu.GemPortMap[uint32(flow.AllocId)] = append(onu.GemPortMap[uint32(flow.AllocId)], uint32(flow.GemportId))
+		}
 
 		// EAPOL flow
 		if flow.Classifier.EthType == uint32(layers.EthernetTypeEAPOL) {
@@ -290,9 +314,8 @@ func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty,
 				if omcistate != omci.DONE {
 					logger.Warn("FlowAdd() OMCI state %d is not \"DONE\"", omci.GetOnuOmciState(onu.OnuID, onu.IntfID))
 				}
-				_ = s.updateOnuIntState(onu.IntfID, onu.OnuID, device.ONU_OMCIACTIVE)
+				_ = s.updateOnuIntState(onu.IntfID, onu.OnuID, device.OnuOmciActive)
 			}
-
 		}
 
 		// DHCP flow
@@ -305,11 +328,11 @@ func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty,
 				if omcistate != omci.DONE {
 					logger.Warn("FlowAdd() OMCI state %d is not \"DONE\"", omci.GetOnuOmciState(onu.OnuID, onu.IntfID))
 				}
-				_ = s.updateOnuIntState(onu.IntfID, onu.OnuID, device.ONU_AUTHENTICATED)
+				_ = s.updateOnuIntState(onu.IntfID, onu.OnuID, device.OnuAuthenticated)
 			}
 		}
-		// Update flow ID in ONU object
-		onu.FlowIDs = append(onu.FlowIDs, flow.FlowId)
+		// Update flows in ONU object
+		onu.Flows = append(onu.Flows, flowKey)
 	}
 	return new(openolt.Empty), nil
 }
@@ -319,7 +342,7 @@ func (s *Server) FlowRemove(c context.Context, flow *openolt.Flow) (*openolt.Emp
 	logger.Debug("OLT %d receives FlowRemove(): %v", s.Olt.ID, flow)
 
 	// Check if flow exists
-	flowKey := FlowKey{
+	flowKey := device.FlowKey{
 		FlowID:        flow.FlowId,
 		FlowDirection: flow.FlowType,
 	}
@@ -332,20 +355,16 @@ func (s *Server) FlowRemove(c context.Context, flow *openolt.Flow) (*openolt.Emp
 	// Send delete flow to flowHandler
 	err := flowHandler.DeleteFlow(flow)
 	if err != nil {
-		return new(openolt.Empty), err
+		logger.Error("failed to delete flow")
 	}
 
 	onu, err := s.GetOnuByID(uint32(flow.OnuId), uint32(flow.AccessIntfId))
 	if err != nil {
 		logger.Warn("Failed flow remove %v", err)
 	} else {
-		// Delete flowID from onu
-		onu.DeleteFlowID(flow.FlowId)
-		device.LoggerWithOnu(onu).WithFields(log.Fields{
-			"olt":   s.Olt.ID,
-			"c_tag": flow.Action.IVid,
-		}).Debug("OLT receives FlowRemove().")
-		logger.Debug("Flows %v in ONU %d", onu.FlowIDs, onu.OnuID)
+		// Delete flows from onu
+		onu.DeleteFlow(flowKey)
+		logger.Debug("Flows %v in onu %d", onu.Flows, onu.OnuID)
 	}
 
 	// Delete flow from flowMap
@@ -354,6 +373,7 @@ func (s *Server) FlowRemove(c context.Context, flow *openolt.Flow) (*openolt.Emp
 	return new(openolt.Empty), nil
 }
 
+// HeartbeatCheck is currently not used by voltha
 func (s *Server) HeartbeatCheck(c context.Context, empty *openolt.Empty) (*openolt.Heartbeat, error) {
 	logger.Debug("OLT %d receives HeartbeatCheck().", s.Olt.ID)
 	signature := new(openolt.Heartbeat)
@@ -361,11 +381,13 @@ func (s *Server) HeartbeatCheck(c context.Context, empty *openolt.Empty) (*openo
 	return signature, nil
 }
 
+// EnablePonIf enables pon interfaces at BBSIM
 func (s *Server) EnablePonIf(c context.Context, intf *openolt.Interface) (*openolt.Empty, error) {
 	logger.Debug("OLT %d receives EnablePonIf().", s.Olt.ID)
 	return new(openolt.Empty), nil
 }
 
+// GetPonIf returns interface info to VOLTHA
 func (s *Server) GetPonIf(c context.Context, intf *openolt.Interface) (*openolt.IntfIndication, error) {
 	logger.Debug("OLT %d receives GetPonIf().", s.Olt.ID)
 	stat := new(openolt.IntfIndication)
@@ -380,6 +402,7 @@ func (s *Server) GetPonIf(c context.Context, intf *openolt.Interface) (*openolt.
 
 }
 
+// DisablePonIf disables pon interface at BBSIM
 func (s *Server) DisablePonIf(c context.Context, intf *openolt.Interface) (*openolt.Empty, error) {
 	logger.Debug("OLT %d receives DisablePonIf().", s.Olt.ID)
 	return new(openolt.Empty), nil
@@ -409,7 +432,7 @@ func (s *Server) EnableIndication(empty *openolt.Empty, stream openolt.Openolt_E
 
 // NewGrpcServer starts openolt gRPC server
 func NewGrpcServer(addrport string) (l net.Listener, g *grpc.Server, e error) {
-	logger.Debug("OpenOLT gRPC server listening %s ...", addrport)
+	logger.Info("OpenOLT gRPC server listening %s ...", addrport)
 	g = grpc.NewServer()
 	l, e = net.Listen("tcp", addrport)
 	return

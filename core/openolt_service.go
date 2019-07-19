@@ -17,14 +17,14 @@
 package core
 
 import (
-
 	"github.com/opencord/voltha-bbsim/common/logger"
 	"github.com/opencord/voltha-bbsim/device"
+	"github.com/opencord/voltha-bbsim/flow"
 	openolt "github.com/opencord/voltha-protos/go/openolt"
 )
 
 func sendOltIndUp(stream openolt.Openolt_EnableIndicationServer, olt *device.Olt) error {
-	data := &openolt.Indication_OltInd{OltInd: &openolt.OltIndication{OperState: "up"}}
+	data := &openolt.Indication_OltInd{OltInd: &openolt.OltIndication{OperState: olt.OperState}}
 	if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
 		logger.Error("Failed to send OLT UP indication: %v", err)
 		return err
@@ -45,7 +45,7 @@ func sendIntfInd(stream openolt.Openolt_EnableIndicationServer, olt *device.Olt)
 	// There is no need to send IntfInd for NNI
 	for i := uint32(0); i < olt.NumPonIntf; i++ {
 		intf := olt.PonIntfs[i]
-		data := &openolt.Indication_IntfInd{&openolt.IntfIndication{IntfId: intf.IntfID, OperState: intf.OperState}}
+		data := &openolt.Indication_IntfInd{IntfInd: &openolt.IntfIndication{IntfId: intf.IntfID, OperState: intf.OperState}}
 		if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
 			logger.Error("Failed to send Intf [id: %d] indication : %v", i, err)
 			return err
@@ -59,7 +59,7 @@ func sendOperInd(stream openolt.Openolt_EnableIndicationServer, olt *device.Olt)
 	// Send OperInd for Nni
 	for i := uint32(0); i < olt.NumNniIntf; i++ {
 		intf := olt.NniIntfs[i]
-		data := &openolt.Indication_IntfOperInd{&openolt.IntfOperIndication{Type: intf.Type, IntfId: intf.IntfID, OperState: intf.OperState}}
+		data := &openolt.Indication_IntfOperInd{IntfOperInd: &openolt.IntfOperIndication{Type: intf.Type, IntfId: intf.IntfID, OperState: intf.OperState}}
 		if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
 			logger.Error("Failed to send NNI IntfOper [id: %d] indication : %v", i, err)
 			return err
@@ -70,7 +70,7 @@ func sendOperInd(stream openolt.Openolt_EnableIndicationServer, olt *device.Olt)
 	// Send OperInd for Pon
 	for i := uint32(0); i < olt.NumPonIntf; i++ {
 		intf := olt.PonIntfs[i]
-		data := &openolt.Indication_IntfOperInd{&openolt.IntfOperIndication{Type: intf.Type, IntfId: intf.IntfID, OperState: intf.OperState}}
+		data := &openolt.Indication_IntfOperInd{IntfOperInd: &openolt.IntfOperIndication{Type: intf.Type, IntfId: intf.IntfID, OperState: intf.OperState}}
 		if err := stream.Send(&openolt.Indication{Data: data}); err != nil {
 			logger.Error("Failed to send PON IntfOper [id: %d] indication : %v", i, err)
 			return err
@@ -132,4 +132,13 @@ func startAlarmLoop(stream openolt.Openolt_EnableIndicationServer, alarmchan cha
 			}
 		}
 	}
+}
+
+func sendPortStats(stream openolt.Openolt_EnableIndicationServer, port *device.Port) error {
+	portStats := flow.GetPortStats(&port.PortStats)
+	portStats.IntfId = interfaceIDToPortNo(port.IntfID, port.Type)
+	data := &openolt.Indication_PortStats{
+		PortStats: portStats,
+	}
+	return stream.Send(&openolt.Indication{Data: data})
 }

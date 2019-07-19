@@ -33,7 +33,8 @@ func RecvWorker(io *Ioinfo, handler *pcap.Handle, r chan Packet) {
 	logger.Debug("recvWorker runs. handler: %v", *handler)
 	packetSource := gopacket.NewPacketSource(handler, handler.LinkType())
 	for packet := range packetSource.Packets() {
-		logger.Debug("recv packet from IF: %v ", *handler)
+		logger.Debug("recv packet from IF: %v", *handler)
+		logger.Debug("Packet received %v", packet)
 		// logger.Println(packet.Dump())
 		pkt := Packet{}
 		pkt.Info = io
@@ -71,10 +72,14 @@ func PopVLAN(pkt gopacket.Packet) (gopacket.Packet, uint16, error) {
 				EthernetType: layer.Type,
 			}
 			buffer := gopacket.NewSerializeBuffer()
-			gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{},
+			err := gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{},
 				ethernetLayer,
 				gopacket.Payload(layer.Payload),
 			)
+			if err != nil {
+				logger.Error("%v", err)
+			}
+
 			retpkt := gopacket.NewPacket(
 				buffer.Bytes(),
 				layers.LayerTypeEthernet,
@@ -102,7 +107,7 @@ func PushVLAN(pkt gopacket.Packet, vid uint16, onu *device.Onu) (gopacket.Packet
 		}
 
 		buffer := gopacket.NewSerializeBuffer()
-		gopacket.SerializeLayers(
+		err := gopacket.SerializeLayers(
 			buffer,
 			gopacket.SerializeOptions{
 				FixLengths: false,
@@ -111,6 +116,10 @@ func PushVLAN(pkt gopacket.Packet, vid uint16, onu *device.Onu) (gopacket.Packet
 			dot1qLayer,
 			gopacket.Payload(eth.Payload),
 		)
+		if err != nil {
+			logger.Error("%v", err)
+		}
+
 		ret := gopacket.NewPacket(
 			buffer.Bytes(),
 			layers.LayerTypeEthernet,
@@ -172,13 +181,13 @@ func setupVethHandler(inveth string, outveth string, vethnames []string) (*pcap.
 
 func getVethHandler(vethname string) (*pcap.Handle, error) {
 	var (
-		device            = vethname
+		deviceName        = vethname
 		snapshotLen int32 = 1518
 		promiscuous       = false
 		err         error
 		timeout     = pcap.BlockForever
 	)
-	handle, err := pcap.OpenLive(device, snapshotLen, promiscuous, timeout)
+	handle, err := pcap.OpenLive(deviceName, snapshotLen, promiscuous, timeout)
 	if err != nil {
 		return nil, err
 	}

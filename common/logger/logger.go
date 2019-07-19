@@ -31,6 +31,22 @@ var (
 func Setup(kafkaBroker string, level string) {
 
 	logger := log.New()
+	formatter := &log.TextFormatter{
+		ForceColors:               false,
+		DisableColors:             false,
+		EnvironmentOverrideColors: false,
+		DisableTimestamp:          false,
+		FullTimestamp:             true,
+		TimestampFormat:           time.RFC3339Nano,
+		DisableSorting:            false,
+		SortingFunc:               nil,
+		DisableLevelTruncation:    false,
+		QuoteEmptyFields:          true,
+		FieldMap:                  nil,
+		CallerPrettyfier:          nil,
+	}
+	logger.SetFormatter(formatter)
+
 	//logger.SetReportCaller(true)
 	myLogger = logger.WithField("topics", []string{"bbsim.log"})
 
@@ -120,4 +136,9 @@ func Info(msg string, args ...interface{}) {
 // Debug logs with log level debug
 func Debug(msg string, args ...interface{}) {
 	myLogger.Debugf(msg, args...)
+}
+
+// Trace logs with log level trace
+func Trace(msg string, args ...interface{}) {
+	myLogger.Tracef(msg, args...)
 }

@@ -21,13 +21,14 @@ import (
 	"sync"
 )
 
-type DeviceState int
+//State represents the OLT States
+type State int
 
 // Device interface provides common methods for OLT and ONU devices
 type Device interface {
 	Initialize()
-	UpdateIntState(intstate DeviceState)
-	GetIntState() DeviceState
+	UpdateIntState(intstate State)
+	GetIntState() State
 	GetDevkey() Devkey
 }
 
@@ -46,10 +47,10 @@ type Olt struct {
 	SerialNumber       string
 	Manufacture        string
 	Name               string
-	InternalState      DeviceState
+	InternalState      State
 	OperState          string
-	NniIntfs           []nniIntf
-	PonIntfs           []ponIntf
+	NniIntfs           []Port
+	PonIntfs           []Port
 	HeartbeatSignature uint32
 	mu                 *sync.Mutex
 }
@@ -68,21 +69,21 @@ const (
 	NniLosRaised
 )
 
-type ponIntf struct {
+// Port info for NNI and PON ports
+type Port struct {
 	Type       string
 	IntfID     uint32
 	OperState  string
 	AlarmState AlarmState
+	PortStats  PortStats
 }
 
-type nniIntf struct {
-	Type       string
-	IntfID     uint32
-	OperState  string
-	AlarmState AlarmState
+// PortStats for NNI and PON ports
+type PortStats struct {
+	Packets uint64
 }
 
-// Constants for port types
+// Constants for Port types
 const (
 	IntfPon = "pon"
 	IntfNni = "nni"
@@ -96,9 +97,9 @@ OLT_INACTIVE -> OLT_PREACTIVE -> ACTIVE
 
 // Constants for OLT states
 const (
-	OLT_INACTIVE  DeviceState = iota // OLT/ONUs are not instantiated
-	OLT_PREACTIVE                    // Before PacketInDaemon Running
-	OLT_ACTIVE                       // After PacketInDaemon Running
+	OltInactive  State = iota // OLT/ONUs are not instantiated
+	OltPreactive              // Before PacketInDaemon Running
+	OltActive                 // After PacketInDaemon Running
 )
 
 // OLTAlarmStateToString is used to get alarm state as string
@@ -116,12 +117,12 @@ func NewOlt(oltid uint32, npon uint32, nnni uint32) *Olt {
 	olt.NumPonIntf = npon
 	olt.NumNniIntf = nnni
 	olt.Name = "BBSIM OLT"
-	olt.InternalState = OLT_INACTIVE
+	olt.InternalState = OltInactive
 	olt.OperState = "up"
 	olt.Manufacture = "BBSIM"
 	olt.SerialNumber = "BBSIMOLT00" + strconv.FormatInt(int64(oltid), 10)
-	olt.NniIntfs = make([]nniIntf, olt.NumNniIntf)
-	olt.PonIntfs = make([]ponIntf, olt.NumPonIntf)
+	olt.NniIntfs = make([]Port, olt.NumNniIntf)
+	olt.PonIntfs = make([]Port, olt.NumPonIntf)
 	olt.HeartbeatSignature = oltid
 	olt.mu = &sync.Mutex{}
 	for i := uint32(0); i < olt.NumNniIntf; i++ {
@@ -141,7 +142,7 @@ func NewOlt(oltid uint32, npon uint32, nnni uint32) *Olt {
 
 // Initialize method initializes NNI and PON ports
 func (olt *Olt) Initialize() {
-	olt.InternalState = OLT_INACTIVE
+	olt.InternalState = OltInactive
 	olt.OperState = "up"
 	for i := uint32(0); i < olt.NumNniIntf; i++ {
 		olt.NniIntfs[i].IntfID = i
@@ -158,7 +159,7 @@ func (olt *Olt) Initialize() {
 }
 
 // GetIntState returns internal state of OLT
-func (olt *Olt) GetIntState() DeviceState {
+func (olt *Olt) GetIntState() State {
 	olt.mu.Lock()
 	defer olt.mu.Unlock()
 	return olt.InternalState
@@ -170,7 +171,7 @@ func (olt *Olt) GetDevkey() Devkey {
 }
 
 // UpdateIntState method updates OLT internal state
-func (olt *Olt) UpdateIntState(intstate DeviceState) {
+func (olt *Olt) UpdateIntState(intstate State) {
 	olt.mu.Lock()
 	defer olt.mu.Unlock()
 	olt.InternalState = intstate

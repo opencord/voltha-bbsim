@@ -22,43 +22,51 @@ import (
 
 	"github.com/opencord/voltha-bbsim/common/logger"
 	openolt "github.com/opencord/voltha-protos/go/openolt"
+	techprofile "github.com/opencord/voltha-protos/go/tech_profile"
 	log "github.com/sirupsen/logrus"
 )
 
 // Constants for the ONU states
 const (
-	ONU_INACTIVE DeviceState = iota // TODO: Each stage name should be more accurate
-	ONU_ACTIVE
-	ONU_OMCIACTIVE
-	ONU_AUTHENTICATED
-	ONU_LOS_RAISED
-	ONU_OMCI_CHANNEL_LOS_RAISED
-	ONU_LOS_ON_OLT_PON_LOS // TODO give more suitable and crisp name
-	ONU_FREE
+	OnuFree State = iota // TODO: Each stage name should be more accurate
+	OnuInactive
+	OnuLosRaised
+	OnuLosOnOltPonLos
+	OnuOmciChannelLosRaised
+	OnuActive
+	OnuOmciActive
+	OnuAuthenticated
 )
 
 // ONUState maps int value of device state to string
-var ONUState = map[DeviceState]string{
-	ONU_INACTIVE:                "ONU_INACTIVE",
-	ONU_ACTIVE:                  "ONU_ACTIVE",
-	ONU_OMCIACTIVE:              "ONU_OMCIACTIVE",
-	ONU_AUTHENTICATED:           "ONU_AUTHENTICATED",
-	ONU_LOS_RAISED:              "ONU_LOS_RAISED",
-	ONU_OMCI_CHANNEL_LOS_RAISED: "ONU_OMCI_CHANNEL_LOS_RAISED",
-	ONU_LOS_ON_OLT_PON_LOS:      "ONU_LOS_ON_OLT_PON_LOS",
-	ONU_FREE:                    "ONU_FREE",
+var ONUState = map[State]string{
+	OnuFree:                 "ONU_FREE",
+	OnuInactive:             "ONU_INACTIVE",
+	OnuLosRaised:            "ONU_LOS_RAISED",
+	OnuLosOnOltPonLos:       "ONU_LOS_ON_OLT_PON_LOS",
+	OnuOmciChannelLosRaised: "ONU_OMCI_CHANNEL_LOS_RAISED",
+	OnuActive:               "ONU_ACTIVE",
+	OnuOmciActive:           "ONU_OMCIACTIVE",
+	OnuAuthenticated:        "ONU_AUTHENTICATED",
+}
+
+// FlowKey used for FlowMap key
+type FlowKey struct {
+	FlowID        uint32
+	FlowDirection string
 }
 
 // Onu structure stores information of ONUs
 type Onu struct {
-	InternalState DeviceState
+	InternalState State
 	OltID         uint32
 	IntfID        uint32
 	OperState     string
 	SerialNumber  *openolt.SerialNumber
 	OnuID         uint32
-	GemportID     uint16
-	FlowIDs       []uint32
+	GemPortMap    map[uint32][]uint32 // alloc-id is used as key and corresponding gem-ports are stored in slice
+	Tconts        *techprofile.TrafficSchedulers
+	Flows         []FlowKey
 	mu            *sync.Mutex
 }
 
@@ -69,11 +77,11 @@ func NewSN(oltid uint32, intfid uint32, onuid uint32) []byte {
 }
 
 // NewOnus initializes and returns slice of Onu objects
-func NewOnus(oltid uint32, intfid uint32, nonus uint32, nnni uint32) []*Onu {
-	onus := []*Onu{}
+func NewOnus(oltid uint32, intfid uint32, nonus uint32) []*Onu {
+	var onus []*Onu
 	for i := 1; i <= int(nonus); i++ {
 		onu := Onu{}
-		onu.InternalState = ONU_FREE // New Onu Initialised with state ONU_FREE
+		onu.InternalState = OnuFree // New Onu Initialised with state ONU_FREE
 		onu.mu = &sync.Mutex{}
 		onu.IntfID = intfid
 		onu.OltID = oltid
@@ -81,7 +89,7 @@ func NewOnus(oltid uint32, intfid uint32, nonus uint32, nnni uint32) []*Onu {
 		onu.SerialNumber = new(openolt.SerialNumber)
 		onu.SerialNumber.VendorId = []byte("BBSM")
 		onu.SerialNumber.VendorSpecific = NewSN(oltid, intfid, uint32(i))
-		onu.GemportID = 0
+		onu.GemPortMap = make(map[uint32][]uint32)
 		onus = append(onus, &onu)
 	}
 	return onus
@@ -90,19 +98,7 @@ func NewOnus(oltid uint32, intfid uint32, nonus uint32, nnni uint32) []*Onu {
 // Initialize method initializes ONU state to up and ONU_INACTIVE
 func (onu *Onu) Initialize() {
 	onu.OperState = "up"
-	onu.InternalState = ONU_INACTIVE
-}
-
-// ValidateONU method validate ONU based on the serial number in onuMap
-func ValidateONU(targetonu openolt.Onu, regonus map[uint32][]*Onu) bool {
-	for _, onus := range regonus {
-		for _, onu := range onus {
-			if ValidateSN(*targetonu.SerialNumber, *onu.SerialNumber) {
-				return true
-			}
-		}
-	}
-	return false
+	onu.InternalState = OnuInactive
 }
 
 // ValidateSN compares two serial numbers and returns result as true/false
@@ -120,7 +116,7 @@ func UpdateOnusOpStatus(ponif uint32, onu *Onu, opstatus string) {
 }
 
 // UpdateIntState method updates ONU internal state
-func (onu *Onu) UpdateIntState(intstate DeviceState) {
+func (onu *Onu) UpdateIntState(intstate State) {
 	onu.mu.Lock()
 	defer onu.mu.Unlock()
 	onu.InternalState = intstate
@@ -132,21 +128,21 @@ func (onu *Onu) GetDevkey() Devkey {
 }
 
 // GetIntState returns ONU internal state
-func (onu *Onu) GetIntState() DeviceState {
+func (onu *Onu) GetIntState() State {
 	onu.mu.Lock()
 	defer onu.mu.Unlock()
 	return onu.InternalState
 }
 
-// DeleteFlowID method search and delete flowID from the onu flowIDs slice
-func (onu *Onu) DeleteFlowID(flowID uint32) {
-	for pos, id := range onu.FlowIDs {
-		if id == flowID {
-			// delete the flowID by shifting all flowIDs by one
-			onu.FlowIDs = append(onu.FlowIDs[:pos], onu.FlowIDs[pos+1:]...)
-			t := make([]uint32, len(onu.FlowIDs))
-			copy(t, onu.FlowIDs)
-			onu.FlowIDs = t
+// DeleteFlow method search and delete flowKey from the onu flows slice
+func (onu *Onu) DeleteFlow(key FlowKey) {
+	for pos, flowKey := range onu.Flows {
+		if flowKey == key {
+			// delete the flowKey by shifting all flowKeys by one
+			onu.Flows = append(onu.Flows[:pos], onu.Flows[pos+1:]...)
+			t := make([]FlowKey, len(onu.Flows))
+			copy(t, onu.Flows)
+			onu.Flows = t
 			break
 		}
 	}

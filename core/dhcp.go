@@ -33,10 +33,10 @@ import (
 
 // Constants for DHCP states
 const (
-	DHCP_INIT clientState = iota + 1
-	DHCP_SELECTING
-	DHCP_REQUESTING
-	DHCP_BOUND
+	DhcpInit clientState = iota + 1
+	DhcpSelecting
+	DhcpRequesting
+	DhcpBound
 )
 
 type dhcpResponder struct {
@@ -50,7 +50,7 @@ type dhcpClientInstance struct {
 	srcIP    *net.IPAddr
 	serverIP *net.IPAddr
 	hostname string
-	curId    uint32
+	curID    uint32
 	curState clientState
 }
 
@@ -94,11 +94,11 @@ func RunDhcpResponder(ctx context.Context, dhcpOut chan *byteMsg, dhcpIn chan *b
 			case msg := <-dhcpOut:
 				logger.Debug("Received dhcp message from dhcpOut")
 
-				if c, ok := clients[clientKey{intfid: msg.IntfId, onuid: msg.OnuId}]; ok {
+				if c, ok := clients[clientKey{intfid: msg.IntfID, onuid: msg.OnuID}]; ok {
 					nextstate := respondMessage("DHCP", *c, msg, dhcpIn)
 					c.updateState(nextstate)
 				} else {
-					logger.Error("Failed to find dhcp client instance intfid:%d onuid:%d", msg.IntfId, msg.OnuId)
+					logger.Error("Failed to find dhcp client instance intfid:%d onuid:%d", msg.IntfID, msg.OnuID)
 				}
 			case <-ctx.Done():
 				return
@@ -112,8 +112,8 @@ func startDHCPClient(intfid uint32, onuid uint32) error {
 	client := dhcpClientInstance{key: clientKey{intfid: intfid, onuid: onuid},
 		srcaddr:  &net.HardwareAddr{0x2e, 0x60, 0x70, 0x13, 0x07, byte(onuid)},
 		hostname: "voltha",
-		curId:    rand.Uint32(),
-		curState: DHCP_INIT}
+		curID:    rand.Uint32(),
+		curState: DhcpInit}
 
 	dhcp := client.createDHCPDisc()
 	bytes, err := client.createDHCP(dhcp)
@@ -125,9 +125,9 @@ func startDHCPClient(intfid uint32, onuid uint32) error {
 	dhcpIn := resp.dhcpIn
 	if err := client.sendBytes(bytes, dhcpIn); err != nil {
 		logger.Error("Failed to send DHCP Discovery")
-		return errors.New("Failed to send DHCP Discovery")
+		return errors.New("failed to send DHCP Discovery")
 	}
-	client.curState = DHCP_SELECTING
+	client.curState = DhcpSelecting
 	logger.Debug("Sending DHCP Discovery intfid:%d onuid:%d", intfid, onuid)
 	resp.clients[clientKey{intfid: intfid, onuid: onuid}] = &client
 	return nil
@@ -147,30 +147,30 @@ func (c dhcpClientInstance) transitState(cur clientState, recvbytes []byte) (nex
 	if dhcp.Operation == layers.DHCPOpReply && msgType == layers.DHCPMsgTypeOffer {
 		logger.Debug("Received DHCP Offer")
 		logger.Debug(recvpkt.Dump())
-		if cur == DHCP_SELECTING {
+		if cur == DhcpSelecting {
 			senddhcp := c.createDHCPReq()
 			sendbytes, err := c.createDHCP(senddhcp)
 			if err != nil {
 				logger.Debug("Failed to createDHCP")
 				return cur, nil, err
 			}
-			return DHCP_REQUESTING, sendbytes, nil
+			return DhcpRequesting, sendbytes, nil
 		}
 	} else if dhcp.Operation == layers.DHCPOpReply && msgType == layers.DHCPMsgTypeAck {
 		logger.Debug("Received DHCP Ack")
 		logger.Debug(recvpkt.Dump())
-		if cur == DHCP_REQUESTING {
-			return DHCP_BOUND, nil, nil
+		if cur == DhcpRequesting {
+			return DhcpBound, nil, nil
 		}
 	} else if dhcp.Operation == layers.DHCPOpReply && msgType == layers.DHCPMsgTypeRelease {
-		if cur == DHCP_BOUND {
+		if cur == DhcpBound {
 			senddhcp := c.createDHCPDisc()
 			sendbytes, err := c.createDHCP(senddhcp)
 			if err != nil {
 				fmt.Println("Failed to createDHCP")
-				return DHCP_INIT, nil, err
+				return DhcpInit, nil, err
 			}
-			return DHCP_SELECTING, sendbytes, nil
+			return DhcpSelecting, sendbytes, nil
 		}
 	} else {
 		logger.Debug("Received unsupported DHCP message Operation:%d MsgType:%d", dhcp.Operation, msgType)
@@ -222,8 +222,12 @@ func (c *dhcpClientInstance) createDHCP(dhcp *layers.DHCPv4) ([]byte, error) {
 		DstPort: 67,
 	}
 
-	udpLayer.SetNetworkLayerForChecksum(ipLayer)
-	if err := gopacket.SerializeLayers(buffer, options, ethernetLayer, ipLayer, udpLayer, dhcp); err != nil {
+	err := udpLayer.SetNetworkLayerForChecksum(ipLayer)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = gopacket.SerializeLayers(buffer, options, ethernetLayer, ipLayer, udpLayer, dhcp); err != nil {
 		return nil, err
 	}
 
@@ -237,21 +241,21 @@ func (c *dhcpClientInstance) createDefaultDHCPReq() layers.DHCPv4 {
 		HardwareType: layers.LinkTypeEthernet,
 		HardwareLen:  6,
 		HardwareOpts: 0,
-		Xid:          c.curId,
+		Xid:          c.curID,
 		ClientHWAddr: *c.srcaddr,
 	}
 }
 
 func (c *dhcpClientInstance) createDefaultOpts() []layers.DHCPOption {
 	hostname := []byte(c.hostname)
-	opts := []layers.DHCPOption{}
+	var opts []layers.DHCPOption
 	opts = append(opts, layers.DHCPOption{
 		Type:   layers.DHCPOptHostname,
 		Data:   hostname,
 		Length: uint8(len(hostname)),
 	})
 
-	bytes := []byte{}
+	var bytes []byte
 	for _, option := range defaultParamsRequestList {
 		bytes = append(bytes, byte(option))
 	}
@@ -267,7 +271,7 @@ func (c *dhcpClientInstance) createDefaultOpts() []layers.DHCPOption {
 func (c *dhcpClientInstance) createDHCPDisc() *layers.DHCPv4 {
 	dhcpLayer := c.createDefaultDHCPReq()
 	defaultOpts := c.createDefaultOpts()
-	dhcpLayer.Options = append([]layers.DHCPOption{layers.DHCPOption{
+	dhcpLayer.Options = append([]layers.DHCPOption{{
 		Type:   layers.DHCPOptMessageType,
 		Data:   []byte{byte(layers.DHCPMsgTypeDiscover)},
 		Length: 1,
@@ -311,8 +315,8 @@ func (c *dhcpClientInstance) createDHCPReq() *layers.DHCPv4 {
 
 func (c *dhcpClientInstance) sendBytes(bytes []byte, dhcpIn chan *byteMsg) error {
 	// Send our packet
-	msg := byteMsg{IntfId: c.key.intfid,
-		OnuId: c.key.onuid,
+	msg := byteMsg{IntfID: c.key.intfid,
+		OnuID: c.key.onuid,
 		Byte:  bytes}
 	dhcpIn <- &msg
 	logger.Debug("sendBytes intfid:%d onuid:%d", c.key.intfid, c.key.onuid)
@@ -324,7 +328,7 @@ func extractDHCP(pkt gopacket.Packet) (*layers.DHCPv4, error) {
 	layerDHCP := pkt.Layer(layers.LayerTypeDHCPv4)
 	dhcp, _ := layerDHCP.(*layers.DHCPv4)
 	if dhcp == nil {
-		return nil, errors.New("Failed to extract DHCP")
+		return nil, errors.New("failed to extract DHCP")
 	}
 	return dhcp, nil
 }
@@ -344,5 +348,5 @@ func getMsgType(dhcp *layers.DHCPv4) (layers.DHCPMsgType, error) {
 			}
 		}
 	}
-	return 0, errors.New("Failed to extract MsgType from dhcp")
+	return 0, errors.New("failed to extract MsgType from dhcp")
 }

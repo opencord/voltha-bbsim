@@ -20,10 +20,9 @@ import (
 	"context"
 	"net"
 	"net/http"
-	"sync"
 
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
-	pb "github.com/opencord/voltha-bbsim/api"
+	api "github.com/opencord/voltha-bbsim/api"
 	"github.com/opencord/voltha-bbsim/common/logger"
 	"github.com/opencord/voltha-bbsim/device"
 	"google.golang.org/grpc"
@@ -43,10 +42,10 @@ const (
 )
 
 // OLTStatus method returns OLT status.
-func (s *Server) OLTStatus(ctx context.Context, in *pb.Empty) (*pb.OLTStatusResponse, error) {
-	logger.Debug("OLTStatus request received")
-	oltInfo := &pb.OLTStatusResponse{
-		Olt: &pb.OLTInfo{
+func (s *Server) OLTStatus(ctx context.Context, in *api.Empty) (*api.OLTStatusResponse, error) {
+	logger.Trace("OLTStatus request received")
+	oltInfo := &api.OLTStatusResponse{
+		Olt: &api.OLTInfo{
 			OltId:     int64(s.Olt.ID),
 			OltSerial: s.Olt.SerialNumber,
 			OltIp:     getOltIP().String(),
@@ -69,38 +68,32 @@ func (s *Server) OLTStatus(ctx context.Context, in *pb.Empty) (*pb.OLTStatusResp
 }
 
 // PortStatus method returns Port status.
-func (s *Server) PortStatus(ctx context.Context, in *pb.PortInfo) (*pb.Ports, error) {
-	portInfo := &pb.Ports{}
-	logger.Debug("PortStatus() invoked")
-	if in.PortType == device.IntfNni {
-		for _, nniPort := range s.Olt.NniIntfs {
-			nniPortInfo, _ := s.fetchPortDetail(nniPort.IntfID, nniPort.Type)
-			portInfo.Ports = append(portInfo.Ports, nniPortInfo)
-		}
-	} else if in.PortType == device.IntfPon {
-		for _, ponPort := range s.Olt.PonIntfs {
-			ponPortInfo, _ := s.fetchPortDetail(ponPort.IntfID, ponPort.Type)
-			portInfo.Ports = append(portInfo.Ports, ponPortInfo)
-		}
-	} else {
-		return &pb.Ports{}, status.Errorf(codes.InvalidArgument, "Invalid port type")
+func (s *Server) PortStatus(ctx context.Context, in *api.PortInfo) (*api.Ports, error) {
+	logger.Trace("PortStatus() invoked")
+	ports := &api.Ports{}
+	portInfo, err := s.fetchPortDetail(in.PortId, in.PortType)
 
+	if err != nil {
+		return &api.Ports{}, status.Errorf(codes.InvalidArgument, err.Error())
 	}
-	return portInfo, nil
+
+	ports.Ports = append(ports.Ports, portInfo)
+	return ports, nil
 }
 
 // ONUStatus method returns ONU status.
-func (s *Server) ONUStatus(ctx context.Context, in *pb.ONURequest) (*pb.ONUs, error) {
-	logger.Debug("ONUStatus request received")
+func (s *Server) ONUStatus(ctx context.Context, in *api.ONURequest) (*api.ONUs, error) {
+	logger.Trace("ONUStatus request received")
 	if in.GetOnu() != nil {
 		logger.Debug("Received single ONU: %+v, %d\n", in.GetOnu(), in.GetOnu().PonPortId)
 		return s.handleONUStatusRequest(in.GetOnu())
 	}
-	logger.Debug("Received bulk ONUs status request")
-	onuInfo := &pb.ONUs{}
+
+	logger.Debug("Received all ONUS status request")
+	onuInfo := &api.ONUs{}
 	for intfid := range s.Onumap {
 		for _, onu := range s.Onumap[intfid] {
-			if onu.InternalState != device.ONU_FREE {
+			if onu.InternalState != device.OnuFree {
 				onuInfo.Onus = append(onuInfo.Onus, copyONUInfo(onu))
 			}
 		}
@@ -109,11 +102,11 @@ func (s *Server) ONUStatus(ctx context.Context, in *pb.ONURequest) (*pb.ONUs, er
 }
 
 // ONUActivate method handles ONU activate requests from user.
-func (s *Server) ONUActivate(ctx context.Context, in *pb.ONURequest) (*pb.BBSimResponse, error) {
-	logger.Info("ONUActivate request received")
+func (s *Server) ONUActivate(ctx context.Context, in *api.ONURequest) (*api.BBSimResponse, error) {
+	logger.Trace("ONUActivate request received")
 	logger.Debug("Received values: %+v\n", in)
 
-	var onuInfo = []*pb.ONUInfo{}
+	var onuInfo []*api.ONUInfo
 	// Activate single ONU
 	if in.GetOnu() != nil {
 		logger.Debug("Received single ONU: %+v\n", in.GetOnu())
@@ -123,14 +116,14 @@ func (s *Server) ONUActivate(ctx context.Context, in *pb.ONURequest) (*pb.BBSimR
 		onuInfo = in.GetOnusBatch().GetOnus()
 	} else {
 		logger.Debug("Received empty request body")
-		return &pb.BBSimResponse{}, status.Errorf(codes.InvalidArgument, RequestFailed)
+		return &api.BBSimResponse{}, status.Errorf(codes.InvalidArgument, RequestFailed)
 	}
 	resp, err := s.handleONUActivate(onuInfo)
 	return resp, err
 }
 
 // ONUDeactivate method handles ONU deactivation request.
-func (s *Server) ONUDeactivate(ctx context.Context, in *pb.ONURequest) (*pb.BBSimResponse, error) {
+func (s *Server) ONUDeactivate(ctx context.Context, in *api.ONURequest) (*api.BBSimResponse, error) {
 	logger.Info("ONUDeactivate request received")
 
 	// deactivate single ONU
@@ -138,7 +131,7 @@ func (s *Server) ONUDeactivate(ctx context.Context, in *pb.ONURequest) (*pb.BBSi
 		logger.Debug("Received single ONU: %+v\n", in.GetOnu())
 		err := s.handleONUDeactivate(in.GetOnu())
 		if err != nil {
-			return &pb.BBSimResponse{}, status.Errorf(codes.Aborted, RequestFailed)
+			return &api.BBSimResponse{}, status.Errorf(codes.Aborted, RequestFailed)
 		}
 	} else if len(in.GetOnusBatch().GetOnus()) != 0 { // bulk deactivate
 		logger.Debug("Received multiple ONUs")
@@ -146,7 +139,7 @@ func (s *Server) ONUDeactivate(ctx context.Context, in *pb.ONURequest) (*pb.BBSi
 			logger.Debug("ONU values: %+v\n", onuinfo)
 			err := s.handleONUDeactivate(onuinfo)
 			if err != nil {
-				return &pb.BBSimResponse{}, status.Errorf(codes.Aborted, RequestFailed)
+				return &api.BBSimResponse{}, status.Errorf(codes.Aborted, RequestFailed)
 			}
 		}
 	} else {
@@ -154,62 +147,89 @@ func (s *Server) ONUDeactivate(ctx context.Context, in *pb.ONURequest) (*pb.BBSi
 		for intfID := range s.Onumap {
 			if err := s.DeactivateAllOnuByIntfID(intfID); err != nil {
 				logger.Error("Failed in ONUDeactivate: %v", err)
-				return &pb.BBSimResponse{}, status.Errorf(codes.Aborted, RequestFailed)
+				return &api.BBSimResponse{}, status.Errorf(codes.Aborted, RequestFailed)
 			}
 		}
 	}
 
-	return &pb.BBSimResponse{StatusMsg: RequestAccepted}, nil
+	return &api.BBSimResponse{StatusMsg: RequestAccepted}, nil
+
 }
 
 // GenerateONUAlarm RPC generates alarm for the onu
-func (s *Server) GenerateONUAlarm(ctx context.Context, in *pb.ONUAlarmRequest) (*pb.BBSimResponse, error) {
-	logger.Debug("GenerateONUAlarms() invoked")
+func (s *Server) GenerateONUAlarm(ctx context.Context, in *api.ONUAlarmRequest) (*api.BBSimResponse, error) {
+	logger.Trace("GenerateONUAlarms() invoked")
 	if in.OnuSerial == "" {
-		return &pb.BBSimResponse{}, status.Errorf(codes.FailedPrecondition, "serial number can not be blank")
+		return &api.BBSimResponse{}, status.Errorf(codes.InvalidArgument, "serial number can not be blank")
 	}
 	if len(in.OnuSerial) != SerialNumberLength {
-		return &pb.BBSimResponse{}, status.Errorf(codes.InvalidArgument, "invalid serial number given (length mismatch)")
+		return &api.BBSimResponse{}, status.Errorf(codes.InvalidArgument, "invalid serial number given (length mismatch)")
 	}
 	if in.Status != "on" && in.Status != "off" {
-		return &pb.BBSimResponse{}, status.Errorf(codes.InvalidArgument, "invalid alarm status provided")
+		return &api.BBSimResponse{}, status.Errorf(codes.InvalidArgument, "invalid alarm status provided")
 	}
 	if s.alarmCh == nil {
-		return &pb.BBSimResponse{}, status.Errorf(codes.Internal, "alarm-channel not created, can not send alarm")
+		return &api.BBSimResponse{}, status.Errorf(codes.FailedPrecondition, "alarm-channel not created, can not send alarm")
 	}
-	// TODO put these checks inside handleOnuAlarm for modularity
 	resp, err := s.handleOnuAlarm(in)
 	return resp, err
 }
 
 // GenerateOLTAlarm RPC generates alarm for the OLT
-func (s *Server) GenerateOLTAlarm(ctx context.Context, in *pb.OLTAlarmRequest) (*pb.BBSimResponse, error) {
-	logger.Debug("GenerateOLTAlarm() invoked")
+func (s *Server) GenerateOLTAlarm(ctx context.Context, in *api.OLTAlarmRequest) (*api.BBSimResponse, error) {
+	logger.Trace("GenerateOLTAlarm() invoked")
 	if in.Status != "on" && in.Status != "off" {
-		return &pb.BBSimResponse{}, status.Errorf(codes.InvalidArgument, "invalid alarm status provided")
+		return &api.BBSimResponse{}, status.Errorf(codes.InvalidArgument, "invalid alarm status provided")
 	}
 	if s.alarmCh == nil {
-		return &pb.BBSimResponse{}, status.Errorf(codes.Internal, "alarm-channel not created, can not send alarm")
+		return &api.BBSimResponse{}, status.Errorf(codes.FailedPrecondition, "alarm-channel not created, can not send alarm")
 	}
 	resp, err := s.handleOltAlarm(in)
 	if err != nil {
 		return resp, err
 	}
-	return &pb.BBSimResponse{StatusMsg: RequestAccepted}, nil
+	return &api.BBSimResponse{StatusMsg: RequestAccepted}, nil
 }
 
 // PerformDeviceAction rpc take the device request and performs OLT and ONU hard and soft reboot
-func (s *Server) PerformDeviceAction(ctx context.Context, in *pb.DeviceAction) (*pb.BBSimResponse, error) {
-	logger.Debug("PerformDeviceAction() invoked")
+func (s *Server) PerformDeviceAction(ctx context.Context, in *api.DeviceAction) (*api.BBSimResponse, error) {
+	logger.Trace("PerformDeviceAction() invoked")
 	if s.deviceActionCh == nil {
-		return &pb.BBSimResponse{}, status.Errorf(codes.Internal, "device action channel not created, can not entertain request")
+		return &api.BBSimResponse{}, status.Errorf(codes.FailedPrecondition, "device action channel not created, can not entertain request")
 	}
 	in, err := s.validateDeviceActionRequest(in)
 	if err != nil {
-		return &pb.BBSimResponse{}, status.Errorf(codes.InvalidArgument, err.Error())
+		return &api.BBSimResponse{}, status.Errorf(codes.InvalidArgument, err.Error())
 	}
 	s.deviceActionCh <- in
-	return &pb.BBSimResponse{StatusMsg: RequestAccepted}, nil
+	return &api.BBSimResponse{StatusMsg: RequestAccepted}, nil
+}
+
+// GetFlows returns all flows or flows for specified ONU
+func (s *Server) GetFlows(ctx context.Context, in *api.ONUInfo) (*api.Flows, error) {
+	logger.Info("GetFlow request received")
+	flows := &api.Flows{}
+	if in.OnuSerial == "" {
+		for _, flow := range s.FlowMap {
+			flowInfo := flow
+			flows.Flows = append(flows.Flows, flowInfo)
+		}
+	} else {
+		serialNumber, err := getOpenoltSerialNumber(in.OnuSerial)
+		if err != nil {
+			return flows, status.Errorf(codes.InvalidArgument, err.Error())
+		}
+		onu, found := s.getOnuFromSNmap(serialNumber)
+		if !found {
+			return flows, status.Errorf(codes.InvalidArgument, "ONU with serial number %s not activated yet", in.OnuSerial)
+		}
+		for _, flowKey := range onu.Flows {
+			flow := s.FlowMap[flowKey]
+			flowInfo := flow
+			flows.Flows = append(flows.Flows, flowInfo)
+		}
+	}
+	return flows, nil
 }
 
 // NewMgmtAPIServer method starts BBSim gRPC server.
@@ -221,7 +241,7 @@ func NewMgmtAPIServer(addrport string) (l net.Listener, g *grpc.Server, e error)
 }
 
 // StartRestGatewayService method starts REST server for BBSim.
-func StartRestGatewayService(grpcAddress string, hostandport string, wg *sync.WaitGroup) {
+func StartRestGatewayService(grpcAddress string, hostandport string) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -229,7 +249,7 @@ func StartRestGatewayService(grpcAddress string, hostandport string, wg *sync.Wa
 	mux := runtime.NewServeMux()
 	opts := []grpc.DialOption{grpc.WithInsecure()}
 	// Register REST endpoints
-	err := pb.RegisterBBSimServiceHandlerFromEndpoint(ctx, mux, grpcAddress, opts)
+	err := api.RegisterBBSimServiceHandlerFromEndpoint(ctx, mux, grpcAddress, opts)
 	if err != nil {
 		logger.Error("%v", err)
 		return

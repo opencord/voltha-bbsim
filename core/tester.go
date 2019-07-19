@@ -48,14 +48,14 @@ type Tester struct {
 }
 
 // NewTestManager returns new TestManager
-func NewTestManager(opt *option) *TestManager {
+func NewTestManager(opt *Option) *TestManager {
 	t := new(TestManager)
 	t.DhcpServerIP = opt.dhcpservip
 	return t
 }
 
 // CreateTester creates instance of Tester
-func (*TestManager) CreateTester(testtype string, opt *option, key device.Devkey, fn func(device.Devkey) error, waitsec int) *Tester {
+func (*TestManager) CreateTester(testtype string, opt *Option, key device.Devkey, fn func(device.Devkey) error, waitsec int) *Tester {
 	logger.Debug("CreateTester() called")
 	t := new(Tester)
 	t.Type = testtype
@@ -87,6 +87,7 @@ func (tm *TestManager) Stop() error {
 	return nil
 }
 
+// StartTester starts the test
 func (tm *TestManager) StartTester(t *Tester) error {
 	testtype := t.Type
 	key := t.Key
@@ -142,15 +143,30 @@ func (tm *TestManager) Initialize() {
 	logger.Info("TestManager Initialize () called")
 	pids := tm.Pid
 	logger.Debug("Runnig Process: %v", pids)
-	KillProcesses(pids)
-	exec.Command("rm", "/var/run/dhcpd.pid").Run()    // This is for DHCP server activation
-	exec.Command("touch", "/var/run/dhcpd.pid").Run() // This is for DHCP server activation
+
+	err := KillProcesses(pids)
+	if err != nil {
+		logger.Error("%v", err)
+	}
+
+	err = exec.Command("rm", "/var/run/dhcpd.pid").Run() // This is for DHCP server activation
+	if err != nil {
+		logger.Error("%v", err)
+	}
+
+	err = exec.Command("touch", "/var/run/dhcpd.pid").Run() // This is for DHCP server activation
+	if err != nil {
+		logger.Error("%v", err)
+	}
 }
 
 // KillProcesses kill process by specified pid
 func KillProcesses(pids []int) error {
 	for _, pname := range pids {
-		killProcess(pname)
+		err := killProcess(pname)
+		if err != nil {
+			logger.Error("%v", err)
+		}
 	}
 	return nil
 }

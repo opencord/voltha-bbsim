@@ -22,16 +22,26 @@ import (
 	"strconv"
 	"time"
 
-	pb "github.com/opencord/voltha-bbsim/api"
+	api "github.com/opencord/voltha-bbsim/api"
 	"github.com/opencord/voltha-bbsim/common/logger"
 	"github.com/opencord/voltha-bbsim/device"
+	"github.com/opencord/voltha-bbsim/flow"
+	openolt "github.com/opencord/voltha-protos/go/openolt"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-// handleONUActivate process ONU status request
-func (s *Server) handleONUStatusRequest(in *pb.ONUInfo) (*pb.ONUs, error) {
-	onuInfo := &pb.ONUs{}
+// Constants for reboot delays
+const (
+	OltRebootDelay     = 40
+	OnuSoftRebootDelay = 10
+	OnuHardRebootDelay = 30
+)
+
+// handleONUStatusRequest process ONU status request
+func (s *Server) handleONUStatusRequest(in *api.ONUInfo) (*api.ONUs, error) {
+	logger.Trace("handleONUStatusRequest() invoked")
+	onuInfo := &api.ONUs{}
 	if in.OnuSerial != "" { // Get status of single ONU by SerialNumber
 		// Get OpenOlt serial number from string
 		sn, err := getOpenoltSerialNumber(in.OnuSerial)
@@ -73,14 +83,14 @@ func (s *Server) handleONUStatusRequest(in *pb.ONUInfo) (*pb.ONUs, error) {
 }
 
 // handleONUActivate method handles ONU activate requests from user.
-func (s *Server) handleONUActivate(in []*pb.ONUInfo) (*pb.BBSimResponse, error) {
-	logger.Info("handleONUActivate request received")
+func (s *Server) handleONUActivate(in []*api.ONUInfo) (*api.BBSimResponse, error) {
+	logger.Trace("handleONUActivate request received")
 	logger.Debug("Received values: %+v\n", in)
 
 	// Check if indication is enabled
 	if s.EnableServer == nil {
 		logger.Error(OLTNotEnabled)
-		return &pb.BBSimResponse{}, status.Errorf(codes.FailedPrecondition, OLTNotEnabled)
+		return &api.BBSimResponse{}, status.Errorf(codes.FailedPrecondition, OLTNotEnabled)
 	}
 
 	onuaddmap := make(map[uint32][]*device.Onu)
@@ -90,12 +100,21 @@ func (s *Server) handleONUActivate(in []*pb.ONUInfo) (*pb.BBSimResponse, error) 
 	for _, onu := range in {
 		intfid := onu.PonPortId
 
+		if !s.isPonIntfPresentInOlt(intfid) {
+			return &api.BBSimResponse{}, status.Errorf(codes.OutOfRange, "PON-"+strconv.Itoa(int(intfid))+
+				" not present in OLT-"+strconv.Itoa(int(s.Olt.ID)))
+		}
+
+		if s.Olt.PonIntfs[intfid].AlarmState == device.PonLosRaised {
+			return &api.BBSimResponse{}, status.Errorf(codes.FailedPrecondition, "pon-"+strconv.Itoa(int(intfid))+" is not active")
+		}
+
 		// Get the free ONU object for the intfid
 		Onu, err := s.GetNextFreeOnu(intfid)
 		if err != nil {
 			markONUsFree(onuaddmap)
 			logger.Error("Failed to get free ONU object for intfID %d :%v", intfid, err)
-			return &pb.BBSimResponse{}, status.Errorf(codes.ResourceExhausted, err.Error())
+			return &api.BBSimResponse{}, status.Errorf(codes.ResourceExhausted, err.Error())
 		}
 
 		// Check if Serial number is provided by user
@@ -104,9 +123,9 @@ func (s *Server) handleONUActivate(in []*pb.ONUInfo) (*pb.BBSimResponse, error) 
 			sn, err := getOpenoltSerialNumber(onu.OnuSerial)
 			if err != nil {
 				logger.Error("Failed to get OpenOlt serial number %v", err)
-				Onu.InternalState = device.ONU_FREE
+				Onu.InternalState = device.OnuFree
 				markONUsFree(onuaddmap)
-				return &pb.BBSimResponse{}, status.Errorf(codes.InvalidArgument, "serial number: "+onu.OnuSerial+" is invalid")
+				return &api.BBSimResponse{}, status.Errorf(codes.InvalidArgument, "serial number: "+onu.OnuSerial+" is invalid")
 			}
 
 			// Check if serial number is not duplicate in requested ONUs
@@ -115,8 +134,8 @@ func (s *Server) handleONUActivate(in []*pb.ONUInfo) (*pb.BBSimResponse, error) 
 					logger.Error("Duplicate serial number found %s", sn)
 					// Mark ONUs free
 					markONUsFree(onuaddmap)
-					Onu.InternalState = device.ONU_FREE
-					return &pb.BBSimResponse{}, status.Errorf(codes.InvalidArgument, "duplicate serial number: "+onu.OnuSerial+" provided")
+					Onu.InternalState = device.OnuFree
+					return &api.BBSimResponse{}, status.Errorf(codes.InvalidArgument, "duplicate serial number: "+onu.OnuSerial+" provided")
 				}
 			}
 			newSerialNums = append(newSerialNums, onu.OnuSerial)
@@ -127,8 +146,8 @@ func (s *Server) handleONUActivate(in []*pb.ONUInfo) (*pb.BBSimResponse, error) 
 				logger.Error("Provided serial number %v already exist", sn)
 				// Mark ONUs free
 				markONUsFree(onuaddmap)
-				Onu.InternalState = device.ONU_FREE
-				return &pb.BBSimResponse{}, status.Errorf(codes.AlreadyExists, "serial number: "+onu.OnuSerial+" already exist")
+				Onu.InternalState = device.OnuFree
+				return &api.BBSimResponse{}, status.Errorf(codes.AlreadyExists, "serial number: "+onu.OnuSerial+" already exist")
 			}
 
 			// Store user provided serial number in ONU object
@@ -143,11 +162,12 @@ func (s *Server) handleONUActivate(in []*pb.ONUInfo) (*pb.BBSimResponse, error) 
 		s.activateONUs(*s.EnableServer, onuaddmap)
 	}
 
-	return &pb.BBSimResponse{StatusMsg: RequestAccepted}, nil
+	return &api.BBSimResponse{StatusMsg: RequestAccepted}, nil
 }
 
 // handleONUDeactivate deactivates ONU described by a single ONUInfo object
-func (s *Server) handleONUDeactivate(in *pb.ONUInfo) error {
+func (s *Server) handleONUDeactivate(in *api.ONUInfo) error {
+	logger.Trace("handleONUDeactivate() invoked")
 
 	if s.EnableServer == nil {
 		logger.Error(OLTNotEnabled)
@@ -191,15 +211,32 @@ func (s *Server) handleONUDeactivate(in *pb.ONUInfo) error {
 }
 
 func (s *Server) handleOLTReboot() {
-	logger.Debug("HandleOLTReboot() invoked")
+	logger.Trace("HandleOLTReboot() invoked")
 	logger.Debug("Sending stop to serverActionCh")
 	s.serverActionCh <- OpenOltStop
-	time.Sleep(40 * time.Second)
+
+	// Delete all flows
+	err := flow.DeleteAllFlows()
+	if err != nil {
+		logger.Warn("%v", err)
+	}
+
+	// clear flowMap
+	s.FlowMap = make(map[device.FlowKey]*openolt.Flow)
+
+	// clear flow IDs from ONU objects
+	for intfID := range s.Onumap {
+		for _, onu := range s.Onumap[intfID] {
+			onu.Flows = nil
+		}
+	}
+
+	time.Sleep(OltRebootDelay * time.Second)
 
 	logger.Debug("Sending start to serverActionCh")
 	s.serverActionCh <- OpenOltStart
 	for {
-		if s.Olt.GetIntState() == device.OLT_ACTIVE {
+		if s.Olt.GetIntState() == device.OltActive {
 			logger.Info("Info: OLT reactivated")
 			break
 		}
@@ -209,23 +246,24 @@ func (s *Server) handleOLTReboot() {
 }
 
 func (s *Server) handleONUHardReboot(onu *device.Onu) {
-	logger.Debug("handleONUHardReboot() invoked")
+	logger.Trace("handleONUHardReboot() invoked")
 	_ = sendDyingGaspInd(*s.EnableServer, onu.IntfID, onu.OnuID)
 	device.UpdateOnusOpStatus(onu.IntfID, onu, "down")
 	// send operstat down to voltha
 	_ = sendOnuInd(*s.EnableServer, onu, "down", "up")
 	// Give OEH some time to perform cleanup
-	time.Sleep(30 * time.Second)
+	time.Sleep(OnuHardRebootDelay * time.Second)
 	s.activateOnu(onu)
 }
 
 func (s *Server) handleONUSoftReboot(IntfID uint32, OnuID uint32) {
-	logger.Debug("handleONUSoftReboot() invoked")
+	logger.Trace("handleONUSoftReboot() invoked")
 	onu, err := s.GetOnuByID(OnuID, IntfID)
 	if err != nil {
 		logger.Error("No onu found with given OnuID on interface %v", IntfID)
+		return
 	}
-	OnuAlarmRequest := &pb.ONUAlarmRequest{
+	OnuAlarmRequest := &api.ONUAlarmRequest{
 		OnuSerial: stringifySerialNumber(onu.SerialNumber),
 		AlarmType: OnuLossOfPloam,
 		Status:    "on",
@@ -236,7 +274,7 @@ func (s *Server) handleONUSoftReboot(IntfID uint32, OnuID uint32) {
 		logger.Error(err.Error())
 	}
 	// Clear alarm
-	time.Sleep(10 * time.Second)
+	time.Sleep(OnuSoftRebootDelay * time.Second)
 	OnuAlarmRequest.Status = "off"
 	_, err = s.handleOnuAlarm(OnuAlarmRequest)
 	if err != nil {
@@ -246,12 +284,13 @@ func (s *Server) handleONUSoftReboot(IntfID uint32, OnuID uint32) {
 
 // GetNextFreeOnu returns free onu object for specified interface ID
 func (s *Server) GetNextFreeOnu(intfid uint32) (*device.Onu, error) {
+	logger.Trace("GetNextFreeOnu() invoked")
 	onus, ok := s.Onumap[intfid]
 	if !ok {
 		return nil, errors.New("interface " + strconv.Itoa(int(intfid)) + " not present in ONU map")
 	}
 	for _, onu := range onus {
-		if onu.InternalState == device.ONU_FREE {
+		if onu.InternalState == device.OnuFree {
 			// If auto generated serial number is already used by some other ONU,
 			// continue to find for other free object
 			snkey := stringifySerialNumber(onu.SerialNumber)
@@ -259,7 +298,7 @@ func (s *Server) GetNextFreeOnu(intfid uint32) (*device.Onu, error) {
 				continue
 			}
 			// Update Onu Internal State
-			onu.InternalState = device.ONU_INACTIVE
+			onu.InternalState = device.OnuInactive
 			return onu, nil
 		}
 	}
@@ -268,8 +307,9 @@ func (s *Server) GetNextFreeOnu(intfid uint32) (*device.Onu, error) {
 
 // DeactivateAllOnuByIntfID deletes all ONUs for given PON port ID
 func (s *Server) DeactivateAllOnuByIntfID(intfid uint32) error {
+	logger.Trace("DeactivateAllOnuByIntfID() invoked")
 	for _, onu := range s.Onumap[intfid] {
-		if onu.InternalState == device.ONU_FREE || onu.InternalState == device.ONU_INACTIVE {
+		if onu.InternalState == device.OnuFree || onu.InternalState == device.OnuInactive {
 			continue
 		}
 		if err := s.HandleOnuDeactivate(onu); err != nil {
@@ -281,10 +321,11 @@ func (s *Server) DeactivateAllOnuByIntfID(intfid uint32) error {
 
 // HandleOnuDeactivate method handles ONU state changes and sending Indication to voltha
 func (s *Server) HandleOnuDeactivate(onu *device.Onu) error {
-	logger.Debug("Deactivating ONU %d for Intf: %d", onu.OnuID, onu.IntfID)
+	logger.Trace("HandleOnuDeactivate() invoked")
+	logger.Info("Deactivating ONU %d for Intf: %d", onu.OnuID, onu.IntfID)
 
 	// Update ONU internal state to ONU_INACTIVE
-	s.updateDevIntState(onu, device.ONU_INACTIVE)
+	s.updateDevIntState(onu, device.OnuInactive)
 
 	// Update ONU operstate to down
 	onu.OperState = "down"
@@ -296,80 +337,106 @@ func (s *Server) HandleOnuDeactivate(onu *device.Onu) error {
 }
 
 func markONUsFree(onumap map[uint32][]*device.Onu) {
+	logger.Trace("markONUsFree() invoked")
 	for intfid := range onumap {
 		for _, onu := range onumap[intfid] {
-			onu.UpdateIntState(device.ONU_FREE)
+			onu.UpdateIntState(device.OnuFree)
 		}
 	}
 }
 
-func copyONUInfo(onu *device.Onu) *pb.ONUInfo {
-	onuData := &pb.ONUInfo{
+func copyONUInfo(onu *device.Onu) *api.ONUInfo {
+	onuData := &api.ONUInfo{
 		OnuId:     onu.OnuID,
 		PonPortId: onu.IntfID,
 		OnuSerial: stringifySerialNumber(onu.SerialNumber),
 		OnuState:  device.ONUState[onu.InternalState],
 		OperState: onu.OperState,
 	}
+
+	// update gemports
+	for _, gemPorts := range onu.GemPortMap {
+		onuData.Gemports = append(onuData.Gemports, gemPorts...)
+	}
+
+	// fill T-CONT data for ONU
+	if onu.Tconts != nil {
+		onuData.Tconts = &api.Tconts{
+			UniId:  onu.Tconts.UniId,
+			PortNo: onu.Tconts.PortNo,
+			Tconts: onu.Tconts.TrafficScheds,
+		}
+	}
+
 	return onuData
 }
 
-func (s *Server) fetchPortDetail(intfID uint32, portType string) (*pb.PortInfo, error) {
-	logger.Debug("fetchPortDetail() invoked")
-	portInfo := &pb.PortInfo{}
-	switch portType {
-	case device.IntfNni:
-		if !s.isNniIntfPresentInOlt(intfID) {
-			return &pb.PortInfo{}, errors.New("NNI " + strconv.Itoa(int(intfID)) + " not present in " +
-				strconv.Itoa(int(s.Olt.ID)))
-		}
-		portInfo = &pb.PortInfo{
-			PortType:          portType,
-			PortId:            intfID,
-			PonPortMaxOnus:    0,
-			PonPortActiveOnus: 0,
-			PortState:         s.Olt.NniIntfs[intfID].OperState,
-			AlarmState:        device.OLTAlarmStateToString[s.Olt.NniIntfs[intfID].AlarmState],
-		}
-		return portInfo, nil
+func (s *Server) fetchPortDetail(intfID uint32, portType string) (*api.PortInfo, error) {
+	logger.Trace("fetchPortDetail() invoked %s-%d", portType, intfID)
 
-	case device.IntfPon:
-		if !s.isPonIntfPresentInOlt(intfID) {
-			return &pb.PortInfo{}, errors.New("PON " + strconv.Itoa(int(intfID)) + " not present in OLT-" +
-				strconv.Itoa(int(s.Olt.ID)))
-		}
-		portInfo = &pb.PortInfo{
-			PortType:          portType,
-			PortId:            intfID,
-			PonPortMaxOnus:    int32(len(s.Onumap[uint32(intfID)])),
-			PonPortActiveOnus: s.getNoOfActiveOnuByPortID(intfID),
-			PortState:         s.Olt.PonIntfs[intfID].OperState,
-			AlarmState:        device.OLTAlarmStateToString[s.Olt.PonIntfs[intfID].AlarmState],
-		}
-		return portInfo, nil
-	default:
-		return &pb.PortInfo{}, errors.New(portType + " is not a valid port type")
+	portInfo := &api.PortInfo{}
+	var maxOnu, activeOnu uint32
+	var alarmState device.AlarmState
+	var state string
+
+	// Get info for specified port
+	if portType == device.IntfNni && s.isNniIntfPresentInOlt(intfID) {
+		state = s.Olt.NniIntfs[intfID].OperState
+		alarmState = s.Olt.NniIntfs[intfID].AlarmState
+
+	} else if portType == device.IntfPon && s.isPonIntfPresentInOlt(intfID) {
+		maxOnu = uint32(len(s.Onumap[intfID]))
+		activeOnu = s.getNoOfActiveOnuByPortID(intfID)
+		state = s.Olt.PonIntfs[intfID].OperState
+		alarmState = s.Olt.PonIntfs[intfID].AlarmState
+
+	} else {
+		return &api.PortInfo{}, errors.New(portType + "-" + strconv.Itoa(int(intfID)) + " not present in OLT-" +
+			strconv.Itoa(int(s.Olt.ID)))
 	}
+
+	// fill proto structure
+	portInfo = &api.PortInfo{
+		PortType:          portType,
+		PortId:            intfID,
+		PonPortMaxOnus:    maxOnu,
+		PonPortActiveOnus: activeOnu,
+		PortState:         state,
+	}
+
+	// update alarm state only when alarm is raised
+	if alarmState == device.NniLosRaised || alarmState == device.PonLosRaised {
+		portInfo.AlarmState = device.OLTAlarmStateToString[alarmState]
+	}
+
+	return portInfo, nil
 }
 
-func (s *Server) validateDeviceActionRequest(request *pb.DeviceAction) (*pb.DeviceAction, error) {
+func (s *Server) validateDeviceActionRequest(request *api.DeviceAction) (*api.DeviceAction, error) {
+	logger.Trace("validateDeviceActionRequest() invoked")
 	switch request.DeviceType {
 	case DeviceTypeOnu:
-		if request.DeviceSerialNumber == "" {
+		if request.SerialNumber == "" {
 			return request, errors.New("onu serial number can not be blank")
 		}
 
-		if len(request.DeviceSerialNumber) != SerialNumberLength {
+		if len(request.SerialNumber) != SerialNumberLength {
 			return request, errors.New("invalid serial number provided")
 		}
 
-		if request.DeviceAction != SoftReboot && request.DeviceAction != HardReboot {
+		_, exist := s.SNmap.Load(request.SerialNumber)
+		if !exist {
+			return &api.DeviceAction{}, errors.New(request.SerialNumber + " not present in OLT-" +
+				strconv.Itoa(int(s.Olt.ID)))
+		}
+
+		if request.Action != SoftReboot && request.Action != HardReboot {
 			return request, errors.New("invalid device action provided")
 		}
 		return request, nil
 	case DeviceTypeOlt:
 		request.DeviceType = DeviceTypeOlt
-		request.DeviceAction = HardReboot
+		request.Action = HardReboot
 		return request, nil
 	default:
 		return request, errors.New("invalid device type")
@@ -379,7 +446,7 @@ func (s *Server) validateDeviceActionRequest(request *pb.DeviceAction) (*pb.Devi
 func (s *Server) getNoOfActiveOnuByPortID(portID uint32) uint32 {
 	var noOfActiveOnus uint32
 	for _, onu := range s.Onumap[portID] {
-		if onu.InternalState == device.ONU_ACTIVE || onu.InternalState == device.ONU_OMCIACTIVE {
+		if onu.InternalState >= device.OnuActive {
 			noOfActiveOnus++
 		}
 	}

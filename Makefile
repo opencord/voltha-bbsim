@@ -29,6 +29,7 @@ DOCKER_LABEL_COMMIT_DATE ?= $(shell git diff-index --quiet HEAD -- && git show -
 DOCKER_LABEL_BUILD_DATE  ?= $(shell date -u "+%Y-%m-%dT%H:%M:%SZ")
 
 GRPC_GW_PATH             ?= $(shell GO111MODULE=on go list -f '{{ .Dir }}' -m github.com/grpc-ecosystem/grpc-gateway)
+PROTO_PATH               ?= $(shell GO111MODULE=on go list -f '{{ .Dir }}' -m github.com/opencord/voltha-protos)
 
 bbsim: dep bbsimapi
 	GO111MODULE=on go build -i -v -o $@
@@ -45,6 +46,7 @@ api/bbsim.pb.go api/bbsim.pb.gw.go: api/bbsim.proto
 	@protoc -I ./api \
 	-I${GRPC_GW_PATH}/third_party/googleapis/ \
 	-I${GRPC_GW_PATH}/ \
+	-I${PROTO_PATH}/protos/ \
 	--go_out=plugins=grpc:api/ \
 	--grpc-gateway_out=logtostderr=true,allow_delete_body=true:api/ \
 	api/bbsim.proto
@@ -54,7 +56,7 @@ swagger:						 ## Generate swagger documentation for BBsim API
 	-I${GRPC_GW_PATH}/third_party/googleapis/ \
 	-I${GRPC_GW_PATH}/ \
 	--swagger_out=logtostderr=true,allow_delete_body=true:api/swagger/ \
-	bbsim.proto
+	api/bbsim.proto
 
 test: dep bbsimapi
 	GO111MODULE=on go test -v ./...

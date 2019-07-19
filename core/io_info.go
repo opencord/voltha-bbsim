@@ -41,7 +41,7 @@ func (s *Server) identifyUniIoinfo(ioloc string, intfid uint32, onuid uint32) (*
 			return ioinfo, nil
 		}
 	}
-	err := errors.New("No matched Ioinfo is found")
+	err := errors.New("no matched Ioinfo is found")
 	logger.Error("identifyUniIoinfo %s", err)
 	return nil, err
 }
@@ -53,7 +53,7 @@ func (s *Server) IdentifyNniIoinfo(ioloc string) (*Ioinfo, error) {
 			return ioinfo, nil
 		}
 	}
-	err := errors.New("No matched Ioinfo is found")
+	err := errors.New("no matched Ioinfo is found")
 	logger.Error("IdentifyNniIoinfo %s", err)
 	return nil, err
 }
@@ -84,13 +84,13 @@ func CreateVethPairs(veth1 string, veth2 string) (err error) {
 }
 
 // RemoveVeth deletes veth by given name
-func RemoveVeth(name string) error {
+func RemoveVeth(name string) {
 	err := exec.Command("ip", "link", "del", name).Run()
 	if err != nil {
 		logger.WithField("veth", name).Error("Fail to removeVeth()", err)
+		return
 	}
 	logger.WithField("veth", name).Info("Veth was removed.")
-	return err
 }
 
 // RemoveVeths deletes veth

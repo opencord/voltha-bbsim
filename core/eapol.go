@@ -22,7 +22,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"sync"
 	"time"
@@ -30,16 +29,17 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/opencord/voltha-bbsim/common/logger"
+	log "github.com/sirupsen/logrus"
 )
 
 type clientState int
 
 // Constants for eapol states
 const (
-	EAP_START clientState = iota + 1 // TODO: This state definition should support 802.1X
-	EAP_RESPID
-	EAP_RESPCHA
-	EAP_SUCCESS
+	EapStart clientState = iota + 1 // TODO: This state definition should support 802.1X
+	EapRespid
+	EapRespcha
+	EapSuccess
 )
 
 func (eap clientState) String() string {
@@ -61,7 +61,7 @@ type eapClientInstance struct {
 	key      clientKey
 	srcaddr  *net.HardwareAddr
 	version  uint8
-	curId    uint8
+	curID    uint8
 	curState clientState
 }
 
@@ -91,17 +91,17 @@ func RunEapolResponder(ctx context.Context, eapolOut chan *byteMsg, eapolIn chan
 		for {
 			select {
 			case msg := <-eapolOut:
-				logger.Debug("Received eapol from eapolOut intfid:%d onuid:%d", msg.IntfId, msg.OnuId)
+				logger.Debug("Received eapol from eapolOut intfid:%d onuid:%d", msg.IntfID, msg.OnuID)
 				responder := getEAPResponder()
 				clients := responder.clients
-				if c, ok := clients[clientKey{intfid: msg.IntfId, onuid: msg.OnuId}]; ok {
-					logger.Debug("Got client intfid:%d onuid: %d (ClientID: %v)", c.key.intfid, c.key.onuid, c.curId)
+				if c, ok := clients[clientKey{intfid: msg.IntfID, onuid: msg.OnuID}]; ok {
+					logger.Debug("Got client intfid:%d onuid: %d (ClientID: %v)", c.key.intfid, c.key.onuid, c.curID)
 					nextstate := respondMessage("EAPOL", *c, msg, eapolIn)
 					c.updateState(nextstate)
 				} else {
 					logger.WithFields(log.Fields{
 						"clients": clients,
-					}).Errorf("Failed to find eapol client instance intfid:%d onuid:%d", msg.IntfId, msg.OnuId)
+					}).Errorf("Failed to find eapol client instance intfid:%d onuid:%d", msg.IntfID, msg.OnuID)
 				}
 			case <-ctx.Done():
 				return
@@ -136,7 +136,7 @@ func sendEAPStart(intfid uint32, onuid uint32, client eapClientInstance, bytes [
 		responder := getEAPResponder()
 		clients := responder.clients
 		if c, ok := clients[clientKey{intfid: intfid, onuid: onuid}]; ok {
-			if c.curState == EAP_SUCCESS {
+			if c.curState == EapSuccess {
 				logger.WithFields(log.Fields{
 					"int_id": intfid,
 					"onu_id": onuid,
@@ -144,7 +144,7 @@ func sendEAPStart(intfid uint32, onuid uint32, client eapClientInstance, bytes [
 				break
 			}
 			// Reset state to EAP start
-			c.updateState(EAP_START)
+			c.updateState(EapStart)
 		} else {
 			logger.WithFields(log.Fields{
 				"clients": clients,
@@ -168,8 +168,8 @@ func startEAPClient(intfid uint32, onuid uint32) error {
 	client := eapClientInstance{key: clientKey{intfid: intfid, onuid: onuid},
 		srcaddr:  &net.HardwareAddr{0x2e, 0x60, 0x70, 0x13, 0x07, byte(onuid)},
 		version:  1,
-		curId:    0,
-		curState: EAP_START}
+		curID:    0,
+		curState: EapStart}
 
 	eap := client.createEAPStart()
 	bytes := client.createEAPOL(eap)
@@ -191,31 +191,31 @@ func (c eapClientInstance) transitState(cur clientState, recvbytes []byte) (next
 	if eap.Code == layers.EAPCodeRequest && eap.Type == layers.EAPTypeIdentity {
 		logger.Debug("Received EAP-Request/Identity")
 		logger.Debug(recvpkt.Dump())
-		c.curId = eap.Id
-		if cur == EAP_START {
+		c.curID = eap.Id
+		if cur == EapStart {
 			reseap := c.createEAPResID()
 			pkt := c.createEAPOL(reseap)
-			logger.Debug("Moving from EAP_START to EAP_RESPID")
-			return EAP_RESPID, pkt, nil
+			logger.Debug("Moving from EapStart to EapRespid")
+			return EapRespid, pkt, nil
 		}
 	} else if eap.Code == layers.EAPCodeRequest && eap.Type == layers.EAPTypeOTP {
 		logger.Debug("Received EAP-Request/Challenge")
 		logger.Debug(recvpkt.Dump())
-		if cur == EAP_RESPID {
-			c.curId = eap.Id
-			senddata := getMD5Data(c.curId, eap)
+		if cur == EapRespid {
+			c.curID = eap.Id
+			senddata := getMD5Data(c.curID, eap)
 			senddata = append([]byte{0x10}, senddata...)
 			sendeap := c.createEAPResCha(senddata)
 			pkt := c.createEAPOL(sendeap)
-			logger.Debug("Moving from EAP_RESPID to EAP_RESPCHA")
-			return EAP_RESPCHA, pkt, nil
+			logger.Debug("Moving from EapRespid to EapRespcha")
+			return EapRespcha, pkt, nil
 		}
 	} else if eap.Code == layers.EAPCodeSuccess && eap.Type == layers.EAPTypeNone {
 		logger.Debug("Received EAP-Success")
 		logger.Debug(recvpkt.Dump())
-		if cur == EAP_RESPCHA {
-			logger.Debug("Moving from EAP_RESPCHA to EAP_SUCCESS")
-			return EAP_SUCCESS, nil, nil
+		if cur == EapRespcha {
+			logger.Debug("Moving from EapRespcha to EapSuccess")
+			return EapSuccess, nil, nil
 		}
 	} else {
 		logger.Debug("Received unsupported EAP")
@@ -242,8 +242,8 @@ func (c eapClientInstance) getKey() clientKey {
 
 func sendBytes(key clientKey, pkt []byte, chIn chan *byteMsg) error {
 	// Send our packet
-	msg := byteMsg{IntfId: key.intfid,
-		OnuId: key.onuid,
+	msg := byteMsg{IntfID: key.intfid,
+		OnuID: key.onuid,
 		Byte:  pkt}
 	chIn <- &msg
 	logger.Debug("sendBytes intfid:%d onuid:%d", key.intfid, key.onuid)
@@ -262,12 +262,12 @@ func (c *eapClientInstance) createEAPOL(eap *layers.EAP) []byte {
 	}
 
 	if eap == nil { // EAP Start
-		gopacket.SerializeLayers(buffer, options,
+		_ = gopacket.SerializeLayers(buffer, options,
 			ethernetLayer,
 			&layers.EAPOL{Version: c.version, Type: 1, Length: 0},
 		)
 	} else {
-		gopacket.SerializeLayers(buffer, options,
+		_ = gopacket.SerializeLayers(buffer, options,
 			ethernetLayer,
 			&layers.EAPOL{Version: c.version, Type: 0, Length: eap.Length},
 			eap,
@@ -283,7 +283,7 @@ func (c *eapClientInstance) createEAPStart() *layers.EAP {
 
 func (c *eapClientInstance) createEAPResID() *layers.EAP {
 	eap := layers.EAP{Code: layers.EAPCodeResponse,
-		Id:       c.curId,
+		Id:       c.curID,
 		Length:   9,
 		Type:     layers.EAPTypeIdentity,
 		TypeData: []byte{0x75, 0x73, 0x65, 0x72}}
@@ -292,7 +292,7 @@ func (c *eapClientInstance) createEAPResID() *layers.EAP {
 
 func (c *eapClientInstance) createEAPResCha(payload []byte) *layers.EAP {
 	eap := layers.EAP{Code: layers.EAPCodeResponse,
-		Id: c.curId, Length: 22,
+		Id: c.curID, Length: 22,
 		Type:     layers.EAPTypeOTP,
 		TypeData: payload}
 	return &eap
@@ -314,7 +314,7 @@ func extractEAPOL(pkt gopacket.Packet) (*layers.EAPOL, error) {
 	layerEAPOL := pkt.Layer(layers.LayerTypeEAPOL)
 	eapol, _ := layerEAPOL.(*layers.EAPOL)
 	if eapol == nil {
-		return nil, errors.New("Cannot extract EAPOL")
+		return nil, errors.New("cannot extract EAPOL")
 	}
 	return eapol, nil
 }
@@ -323,7 +323,7 @@ func extractEAP(pkt gopacket.Packet) (*layers.EAP, error) {
 	layerEAP := pkt.Layer(layers.LayerTypeEAP)
 	eap, _ := layerEAP.(*layers.EAP)
 	if eap == nil {
-		return nil, errors.New("Cannot extract EAP")
+		return nil, errors.New("cannot extract EAP")
 	}
 	return eap, nil
 }

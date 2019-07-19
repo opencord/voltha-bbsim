@@ -19,9 +19,10 @@ package core
 import (
 	"strconv"
 
-	pb "github.com/opencord/voltha-bbsim/api"
+	api "github.com/opencord/voltha-bbsim/api"
 	"github.com/opencord/voltha-bbsim/common/logger"
 	"github.com/opencord/voltha-bbsim/device"
+	flowHandler "github.com/opencord/voltha-bbsim/flow"
 	openolt "github.com/opencord/voltha-protos/go/openolt"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -40,49 +41,49 @@ const (
 	AlarmOff = "off"
 )
 
-func (s *Server) handleOnuAlarm(in *pb.ONUAlarmRequest) (*pb.BBSimResponse, error) {
+func (s *Server) handleOnuAlarm(in *api.ONUAlarmRequest) (*api.BBSimResponse, error) {
+	logger.Trace("handleOnuAlarm() invoked")
 	value, ok := s.SNmap.Load(in.OnuSerial)
-	onu := value.(*device.Onu)
 	if !ok {
-		return &pb.BBSimResponse{}, status.Errorf(codes.NotFound, "no active or discovered onu found with serial number "+in.OnuSerial)
+		return &api.BBSimResponse{}, status.Errorf(codes.NotFound, "no active or discovered onu found with serial number "+in.OnuSerial)
 	}
 
-	if (onu.InternalState == device.ONU_LOS_RAISED || onu.InternalState == device.ONU_LOS_ON_OLT_PON_LOS) &&
+	onu := value.(*device.Onu)
+	if (onu.InternalState == device.OnuLosRaised || onu.InternalState == device.OnuLosOnOltPonLos) &&
 		(in.AlarmType != OnuLossOfPloam) {
-		return &pb.BBSimResponse{}, status.Errorf(codes.Aborted, in.OnuSerial+" is not reachable, can not send onu alarm")
+		return &api.BBSimResponse{}, status.Errorf(codes.Aborted, in.OnuSerial+" is not reachable, can not send onu alarm")
 	}
 
 	if s.Olt.PonIntfs[onu.IntfID].AlarmState == device.PonLosRaised && (in.AlarmType != OnuLossOfPloam) {
 		// Don't send onu alarm as OLT-PON is down
-		return &pb.BBSimResponse{}, status.Errorf(codes.Aborted, "pon-port down, can not send onu alarm")
+		return &api.BBSimResponse{}, status.Errorf(codes.Aborted, "pon-port down, can not send onu alarm")
 	}
 	switch in.AlarmType {
 	case OnuLossOfOmciChannel:
 		Ind := formulateLossOfOmciChannelAlarm(in.Status, onu)
 		if in.Status == AlarmOn {
-			onu.UpdateIntState(device.ONU_OMCI_CHANNEL_LOS_RAISED)
+			onu.UpdateIntState(device.OnuOmciChannelLosRaised)
 		} else {
-			onu.UpdateIntState(device.ONU_ACTIVE)
+			onu.UpdateIntState(device.OnuActive)
 		}
 		s.alarmCh <- Ind
-		return &pb.BBSimResponse{StatusMsg: RequestAccepted}, nil
+		return &api.BBSimResponse{StatusMsg: RequestAccepted}, nil
 
 	case OnuSignalDegrade:
 		Ind := formulateSignalDegradeAlarm(in.Status, onu)
 		s.alarmCh <- Ind
-		return &pb.BBSimResponse{StatusMsg: RequestAccepted}, nil
+		return &api.BBSimResponse{StatusMsg: RequestAccepted}, nil
 
 	case OnuLossOfPloam:
 		if in.Status == AlarmOn {
-			onu.UpdateIntState(device.ONU_LOS_RAISED)
+			onu.UpdateIntState(device.OnuLosRaised)
 			device.UpdateOnusOpStatus(onu.IntfID, onu, "down")
 		} else {
-			onu.UpdateIntState(device.ONU_ACTIVE)
+			onu.UpdateIntState(device.OnuActive)
 			device.UpdateOnusOpStatus(onu.IntfID, onu, "up")
-			// TODO is it required to check onu state?
 			err := sendOnuDiscInd(*s.EnableServer, onu)
 			if err != nil {
-				logger.Error("Error: %v", err.Error())
+				logger.Error("Error: %s", err.Error())
 			}
 		}
 		Ind := formulateLossOfPLOAM(in.Status, onu)
@@ -100,17 +101,18 @@ func (s *Server) handleOnuAlarm(in *pb.ONUAlarmRequest) (*pb.BBSimResponse, erro
 
 	default:
 		logger.Debug("Unhandled alarm type")
-		return &pb.BBSimResponse{}, status.Errorf(codes.Unimplemented, "Unhandled alarm type")
+		return &api.BBSimResponse{}, status.Errorf(codes.Unimplemented, "Unhandled alarm type")
 	}
 
 }
 
-func (s *Server) handleOltAlarm(in *pb.OLTAlarmRequest) (*pb.BBSimResponse, error) {
+func (s *Server) handleOltAlarm(in *api.OLTAlarmRequest) (*api.BBSimResponse, error) {
+	logger.Trace("handleOltAlarm() invoked")
 	switch in.PortType {
 	case device.IntfNni:
 
 		if !s.isNniIntfPresentInOlt(in.PortId) {
-			return &pb.BBSimResponse{}, status.Errorf(codes.NotFound, strconv.Itoa(int(in.PortId))+" NNI not present in olt")
+			return &api.BBSimResponse{}, status.Errorf(codes.NotFound, strconv.Itoa(int(in.PortId))+" NNI not present in olt")
 		}
 
 		Ind := formulateOLTLOSAlarm(in.Status, in.PortId, device.IntfNni)
@@ -119,13 +121,13 @@ func (s *Server) handleOltAlarm(in *pb.OLTAlarmRequest) (*pb.BBSimResponse, erro
 
 	case device.IntfPon:
 		if !s.isPonIntfPresentInOlt(in.PortId) {
-			return &pb.BBSimResponse{}, status.Errorf(codes.NotFound, strconv.Itoa(int(in.PortId))+" PON not present in olt")
+			return &api.BBSimResponse{}, status.Errorf(codes.NotFound, strconv.Itoa(int(in.PortId))+" PON not present in olt")
 		}
 		Ind := formulateOLTLOSAlarm(in.Status, in.PortId, in.PortType)
 		s.alarmCh <- Ind
 		onusOperstat := s.setPONPortState(in.PortId, in.Status)
 		for _, onu := range s.Onumap[in.PortId] {
-			if onu.InternalState == device.ONU_LOS_RAISED || onu.InternalState == device.ONU_FREE {
+			if onu.InternalState == device.OnuLosRaised || onu.InternalState == device.OnuFree {
 				continue // Skip for onus which have independently raised onu los
 			}
 
@@ -136,23 +138,33 @@ func (s *Server) handleOltAlarm(in *pb.OLTAlarmRequest) (*pb.BBSimResponse, erro
 			s.sendOnuLosOnOltPonLos(onu, in.Status)
 		}
 	default:
-		return &pb.BBSimResponse{}, status.Errorf(codes.Internal, "invalid interface type provided")
+		return &api.BBSimResponse{}, status.Errorf(codes.InvalidArgument, "invalid interface type provided")
 	}
 
-	return &pb.BBSimResponse{StatusMsg: RequestAccepted}, nil
+	return &api.BBSimResponse{StatusMsg: RequestAccepted}, nil
 }
 
 func (s *Server) setNNIPortState(portID uint32, alarmstatus string) {
+	logger.Trace("setNNIPortState() invoked")
 	switch alarmstatus {
 	case AlarmOn:
 		s.Olt.UpdateNniPortState(portID, device.NniLosRaised, "down")
+		err := flowHandler.PortDown(0)
+		if err != nil {
+			logger.Error("Failed in port down %v", err)
+		}
 
 	case AlarmOff:
 		s.Olt.UpdateNniPortState(portID, device.NniLosCleared, "up")
+		err := flowHandler.PortUp(0)
+		if err != nil {
+			logger.Error("Failed in port up %v", err)
+		}
 	}
 }
 
 func (s *Server) setPONPortState(portID uint32, alarmstatus string) string {
+	logger.Trace("setPONPortState() invoked")
 	switch alarmstatus {
 	case AlarmOn:
 		s.Olt.UpdatePonPortState(portID, device.PonLosRaised, "down")
@@ -166,12 +178,13 @@ func (s *Server) setPONPortState(portID uint32, alarmstatus string) string {
 }
 
 func (s *Server) sendOnuLosOnOltPonLos(onu *device.Onu, status string) {
-	var internalState device.DeviceState
+	logger.Trace("sendOnuLosOnOltPonLos() invoked")
+	var internalState device.State
 
 	if status == AlarmOn {
-		internalState = device.ONU_LOS_ON_OLT_PON_LOS
+		internalState = device.OnuLosOnOltPonLos
 	} else if status == AlarmOff {
-		internalState = device.ONU_ACTIVE
+		internalState = device.OnuActive
 	}
 
 	Ind := formulateLossOfPLOAM(status, onu)
@@ -189,7 +202,7 @@ func (s *Server) sendOnuLosOnOltPonLos(onu *device.Onu, status string) {
 }
 
 func formulateLossOfOmciChannelAlarm(status string, onu *device.Onu) *openolt.Indication {
-	logger.Debug("formulateLossofOmciChannelAlarm() invoked")
+	logger.Trace("formulateLossofOmciChannelAlarm() invoked")
 
 	alarmIndication := &openolt.AlarmIndication_OnuLossOmciInd{
 		OnuLossOmciInd: &openolt.OnuLossOfOmciChannelIndication{
@@ -209,7 +222,7 @@ func formulateLossOfOmciChannelAlarm(status string, onu *device.Onu) *openolt.In
 }
 
 func formulateSignalDegradeAlarm(status string, onu *device.Onu) *openolt.Indication {
-	logger.Debug("formulateSignalDegrade() invoked")
+	logger.Trace("formulateSignalDegrade() invoked")
 	alarmIndication := &openolt.AlarmIndication_OnuSignalDegradeInd{
 		OnuSignalDegradeInd: &openolt.OnuSignalDegradeIndication{
 			IntfId:              onu.IntfID,
@@ -227,7 +240,7 @@ func formulateSignalDegradeAlarm(status string, onu *device.Onu) *openolt.Indica
 }
 
 func formulateLossOfPLOAM(status string, onu *device.Onu) *openolt.Indication {
-	logger.Debug("formulateLossOfPLOAM() invoked")
+	logger.Trace("formulateLossOfPLOAM() invoked")
 
 	alarmIndication := &openolt.AlarmIndication_OnuAlarmInd{OnuAlarmInd: &openolt.OnuAlarmIndication{
 		IntfId:             onu.IntfID,
@@ -258,12 +271,17 @@ func formulateOLTLOSAlarm(status string, PortID uint32, intfType string) *openol
 	return Ind
 }
 
-func (s *Server) checkAndSendOltPonLos(serial string, status string, intfType string) (*pb.BBSimResponse, error) {
-	value, _ := s.SNmap.Load(serial)
+func (s *Server) checkAndSendOltPonLos(serial string, status string, intfType string) (*api.BBSimResponse, error) {
+	value, ok := s.SNmap.Load(serial)
+	if !ok {
+		logger.Debug(serial + " not found in OLT-" + strconv.Itoa(int(s.Olt.ID)))
+		return &api.BBSimResponse{}, nil
+	}
+
 	onu := value.(*device.Onu)
 	if s.getNoOfActiveOnuByPortID(onu.IntfID) == 0 {
 		logger.Warn("Warning: Sending OLT-LOS, as all onus on pon-port %v raised los", onu.IntfID)
-		request := &pb.OLTAlarmRequest{PortId: onu.IntfID, Status: AlarmOn, PortType: device.IntfPon}
+		request := &api.OLTAlarmRequest{PortId: onu.IntfID, Status: AlarmOn, PortType: device.IntfPon}
 		resp, err := s.handleOltAlarm(request)
 		return resp, err
 	}
@@ -273,11 +291,12 @@ func (s *Server) checkAndSendOltPonLos(serial string, status string, intfType st
 		s.alarmCh <- Ind
 	}
 
-	return &pb.BBSimResponse{StatusMsg: RequestAccepted}, nil
+	return &api.BBSimResponse{StatusMsg: RequestAccepted}, nil
 }
 
 func interfaceIDToPortNo(intfid uint32, intfType string) uint32 {
-	// Converts interface-id to port-numbers that can be understood by the voltha
+	logger.Trace("interfaceIDToPortNo() invoked")
+	// Converts interface-id to port-numbers that can be understood by the VOLTHA
 	if intfType == device.IntfNni {
 		// nni at voltha starts with 65536
 		// nni = 65536 + interface_id

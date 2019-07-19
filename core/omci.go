@@ -86,5 +86,16 @@ func (s *Server) handleOmciAction(pkt []byte, IntfID uint32, OnuID uint32) {
 			logger.Info("ONU reboot recieved")
 			s.handleONUSoftReboot(IntfID, OnuID)
 		}
+	} else if MEClass == omci.GEMPortNetworkCTP {
+		switch msgType {
+		case omci.Create:
+			logger.Info("GEMPort created")
+			gemport, err := omci.GetGemPortId(IntfID, OnuID)
+			if err != nil {
+				logger.Error("error in getting gemport %v", err)
+				return
+			}
+			logger.Info("GEM Port %d created at ONU %d intf-id %d", gemport, OnuID, IntfID)
+		}
 	}
 }
