@@ -159,22 +159,19 @@ func (s *Server) DeleteOnu(c context.Context, onu *openolt.Onu) (*openolt.Empty,
 	return new(openolt.Empty), nil
 }
 
-func (s *Server) GetOnuInfo(c context.Context, onu *openolt.Onu) (*openolt.OnuIndication, error){
+func (s *Server) GetOnuInfo(c context.Context, onu *openolt.Onu) (*openolt.OnuIndication, error) {
 	logger.Debug("Olt receives GetOnuInfo() intfID: %d, onuID: %d", onu.IntfId, onu.OnuId)
-
-	if onu.IntfId > (s.Olt.NumPonIntf-1){
-		logger.Error("PON ID %d out of bounds. %d ports total", onu.IntfId, s.Olt.NumPonIntf)
-		return nil, status.Errorf(codes.OutOfRange, "PON ID %d out of bounds. %d ports total (indexing starts at 0)", onu.IntfId, s.Olt.NumPonIntf)
-	} else if nonus:=len(s.Onumap[onu.IntfId]); int(onu.OnuId) > nonus-1{
-		logger.Error("ONU ID %d out of bounds. %d onus total", onu.OnuId, s.Olt.NumPonIntf)
-		return nil, status.Errorf(codes.OutOfRange, "ONU ID %d out of bounds. %d ONUs total (indexing starts at 0)", onu.OnuId, nonus)
-	} else{
-		stat := new(openolt.OnuIndication)
-		stat.IntfId = onu.IntfId
-		stat.OnuId = onu.OnuId
-		stat.OperState = "up"
-		return stat, nil
+	Onu, err := s.GetOnuByID(onu.OnuId, onu.IntfId)
+	if err != nil {
+		logger.Error("ONU not found intfID %d, onuID %d", onu.IntfId, onu.OnuId)
+		return new(openolt.OnuIndication), err
 	}
+	onuIndication := new(openolt.OnuIndication)
+	onuIndication.IntfId = Onu.IntfID
+	onuIndication.OnuId = Onu.OnuID
+	onuIndication.OperState = Onu.OperState
+
+	return onuIndication, nil
 }
 
 // OmciMsgOut receives OMCI messages from voltha
@@ -336,18 +333,18 @@ func (s *Server) EnablePonIf(c context.Context, intf *openolt.Interface) (*openo
 	return new(openolt.Empty), nil
 }
 
-func (s *Server) GetPonIf(c context.Context, intf *openolt.Interface) (*openolt.IntfIndication, error){
+func (s *Server) GetPonIf(c context.Context, intf *openolt.Interface) (*openolt.IntfIndication, error) {
 	logger.Debug("OLT %d receives GetPonIf().", s.Olt.ID)
-	stat:=new(openolt.IntfIndication)
+	stat := new(openolt.IntfIndication)
 
-	if intf.IntfId > (s.Olt.NumPonIntf-1){
+	if intf.IntfId > (s.Olt.NumPonIntf - 1) {
 		logger.Error("PON ID %d out of bounds. %d ports total", intf.IntfId, s.Olt.NumPonIntf)
 		return stat, status.Errorf(codes.OutOfRange, "PON ID %d out of bounds. %d ports total (indexing starts at 0)", intf.IntfId, s.Olt.NumPonIntf)
-	} else{
-		stat.IntfId = intf.IntfId
-		stat.OperState = "up"
-		return stat, nil
 	}
+	stat.IntfId = intf.IntfId
+	stat.OperState = s.Olt.PonIntfs[intf.IntfId].OperState
+	return stat, nil
+
 }
 
 func (s *Server) DisablePonIf(c context.Context, intf *openolt.Interface) (*openolt.Empty, error) {
