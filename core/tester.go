@@ -17,6 +17,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os/exec"
@@ -190,12 +191,15 @@ func activateDHCPServer(veth string, serverip string) error {
 		logger.Error("Fail to set %s up: %s", veth, err)
 		return err
 	}
-	cmd := "/usr/local/bin/dhcpd"
+	dhcp := "/usr/local/bin/dhcpd"
 	conf := "/etc/dhcp/dhcpd.conf"
 	logfile := "/tmp/dhcplog"
-	err = exec.Command(cmd, "-cf", conf, veth, "-tf", logfile).Run()
+	var stderr bytes.Buffer
+	cmd := exec.Command(dhcp, "-cf", conf, veth, "-tf", logfile)
+	cmd.Stderr = &stderr
+	err = cmd.Run()
 	if err != nil {
-		logger.Error("Fail to activateDHCP Server (): %s", err)
+		logger.Error("Fail to activateDHCP Server (): %s, %s", err, stderr.String())
 		return err
 	}
 	logger.Info("DHCP Server is successfully activated !")

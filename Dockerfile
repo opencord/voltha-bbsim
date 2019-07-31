@@ -15,7 +15,7 @@
 # bbsim dockerfile
 
 # builder parent
-FROM golang:1.10-stretch as builder
+FROM golang:1.12-stretch as builder
 
 # install prereqs
 ENV PROTOC_VERSION 3.6.1
@@ -29,26 +29,39 @@ RUN apt-get update \
  && mv /tmp/protoc3/bin/* /usr/local/bin/ \
  && mv /tmp/protoc3/include/* /usr/local/include/ \
  && go get -v github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway \
- && go get -v github.com/golang/protobuf/protoc-gen-go 
+ && go get -v github.com/golang/protobuf/protoc-gen-go
+
+WORKDIR /go/src/gerrit.opencord.org/voltha-bbsim
+ENV GO111MODULE=on
+ENV GOPROXY=https://proxy.golang.org
+
+# get dependencies
+COPY go.mod go.sum ./
+RUN go mod download
+
+# build the protos
+COPY Makefile ./
+COPY openolt.proto ./
+COPY protos/ ./protos
+RUN make protos/openolt.pb.go
+COPY api/ ./api
+RUN make bbsimapi
 
 # copy and build
-WORKDIR /go/src/gerrit.opencord.org/voltha-bbsim
-COPY . /go/src/gerrit.opencord.org/voltha-bbsim
-
-RUN make bbsim
+COPY . ./
+RUN GO111MODULE=on go build -i -v -o bbsim
 
 # runtime parent
-FROM golang:1.10-stretch
+FROM golang:1.12-stretch
 
 # runtime prereqs
 # the symlink on libpcap is because both alpine and debian come with 1.8.x, but
 # debian symlinks it to 0.8 for historical reasons:
 # https://packages.debian.org/stretch/libpcap0.8-dev
 RUN apt-get update \
- && apt-get install -y libpcap-dev wpasupplicant isc-dhcp-server network-manager\
+ && apt-get install -y libpcap-dev isc-dhcp-server network-manager\
  && ln -s /usr/lib/libpcap.so.1.8.1 /usr/lib/libpcap.so.0.8
 
-COPY ./config/wpa_supplicant.conf /etc/wpa_supplicant/
 COPY ./config/isc-dhcp-server /etc/default/
 COPY ./config/dhcpd.conf /etc/dhcp/
 RUN mv /usr/sbin/dhcpd /usr/local/bin/ \

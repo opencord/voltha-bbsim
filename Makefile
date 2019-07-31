@@ -15,6 +15,8 @@
 BBSIM_DEPS  = $(wildcard ./*.go)
 VERSION     ?= $(shell cat ./VERSION)
 DOCKER_TAG  ?= ${VERSION}
+DOCKER_ORG  ?= voltha/
+DOCKER_REGISTRY ?= ""
 
 ## Docker related
 DOCKER_BUILD_ARGS        ?=
@@ -26,21 +28,14 @@ DOCKER_LABEL_VCS_REF     ?= $(shell git diff-index --quiet HEAD -- && git rev-pa
 DOCKER_LABEL_COMMIT_DATE ?= $(shell git diff-index --quiet HEAD -- && git show -s --format=%cd --date=iso-strict HEAD || echo "unknown" )
 DOCKER_LABEL_BUILD_DATE  ?= $(shell date -u "+%Y-%m-%dT%H:%M:%SZ")
 
-.PHONY: dep test clean docker
+bbsim: dep protos/openolt.pb.go bbsimapi
+	GO111MODULE=on go build -i -v -o $@
 
-prereq:
-	go get -v google.golang.org/grpc
-	go get -v github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway
-	go get -v github.com/golang/protobuf/protoc-gen-go
-	go get -v github.com/grpc-ecosystem/grpc-gateway/protoc-gen-swagger
-	go get -v github.com/google/gopacket
-	go get -u -v github.com/opencord/omci-sim
-
-bbsim: prereq protos/openolt.pb.go bbsimapi dep
-	go build -i -v -o $@
-
-dep: protos/openolt.pb.go bbsimapi
-	go get -v -d ./...
+dep:
+	GO111MODULE=off go get -u github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway
+	GO111MODULE=off go get -v github.com/golang/protobuf/protoc-gen-go
+	GO111MODULE=off go get -v github.com/google/gopacket
+	GO111MODULE=on go mod download all
 
 protos/openolt.pb.go: openolt.proto
 	@protoc -I . \
@@ -66,9 +61,9 @@ swagger:						 ## Generate swagger documentation for BBsim API
 	--swagger_out=logtostderr=true,allow_delete_body=true:api/swagger/ \
 	bbsim.proto
 
-test:
-	go test -v ./...
-	go test -v ./... -cover
+test: dep protos/openolt.pb.go bbsimapi
+	GO111MODULE=on go test -v ./...
+	GO111MODULE=on go test -v ./... -cover
 
 fmt:
 	go fmt ./...
@@ -87,8 +82,10 @@ clean:
 	        api/swagger/*.json
 
 docker-build:
-	docker build -t voltha/voltha-bbsim:${DOCKER_TAG} .
-	docker save voltha/voltha-bbsim:${DOCKER_TAG} -o voltha-bbsim_${DOCKER_TAG}.tgz
+	docker build -t ${DOCKER_REGISTRY}${DOCKER_ORG}voltha-bbsim:${DOCKER_TAG} .
+
+docker-save:
+	docker save ${DOCKER_REGISTRY}${DOCKER_ORG}voltha-bbsim:${DOCKER_TAG} -o voltha-bbsim_${DOCKER_TAG}.tgz
 
 docker-push:
-	docker push voltha/voltha-bbsim:${DOCKER_TAG}
+	docker push ${DOCKER_REGISTRY}${DOCKER_ORG}voltha-bbsim:${DOCKER_TAG}

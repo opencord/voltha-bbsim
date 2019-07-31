@@ -2,3 +2,6 @@ api/swagger/bbsim.swagger.json
 /bbsim
 protos/openolt.pb.go
 coverage.txt
+.idea/
+api/bbsim.pb.go
+api/bbsim.pb.gw.go
