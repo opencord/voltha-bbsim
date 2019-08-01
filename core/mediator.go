@@ -174,14 +174,18 @@ func (m *mediator) Mediate() {
 		next := sr.next
 		current := sr.current
 		dev := sr.device
+		key := dev.GetDevkey()
 		if reflect.TypeOf(dev) == reflect.TypeOf(&device.Olt{}) {
-			logger.Debug("Received OLT Device %v Current: %d Next: %d", dev, current, next)
+			logger.WithFields(log.Fields{
+				"device": dev,
+			}).Debugf("Received OLT Device state change %v Current: %d Next: %d", key, current, next)
 			if err := transitOlt(current, next, m.testmanager, m.opt); err != nil {
 				logger.Error("%v", err)
 			}
 		} else if reflect.TypeOf(dev) == reflect.TypeOf(&device.Onu{}) {
-			logger.Debug("Received ONU Device %v Current: %d Next: %d", dev, current, next)
-			key := dev.GetDevkey()
+			logger.WithFields(log.Fields{
+				"device": dev,
+			}).Debugf("Received ONU Device state change %v Current: %d Next: %d", key, current, next)
 			if err := transitOnu(key, current, next, m.testmanager, m.opt); err != nil {
 				logger.Error("%v", err)
 			}
@@ -204,15 +208,16 @@ func transitOlt(current device.DeviceState, next device.DeviceState, tm *TestMan
 	return nil
 }
 
-func transitOnu(key device.Devkey, current device.DeviceState, next device.DeviceState, tm *TestManager, o *option) error {
-	logger.Debug("trnsitOnu called with key: %v, current: %d, next: %d", key, current, next)
+func transitOnu(key device.Devkey, previous device.DeviceState, current device.DeviceState, tm *TestManager, o *option) error {
+	logger.Debug("transitOnu called with key: %v, previous: %s, current: %s", key, device.ONUState[previous], device.ONUState[current])
 	if o.Mode == AAA || o.Mode == BOTH {
-		if current == device.ONU_ACTIVE && next == device.ONU_OMCIACTIVE {
+		if previous == device.ONU_ACTIVE && current == device.ONU_OMCIACTIVE {
+			logger.Debug("Starting WPASupplicant for device %v", key)
 			t := tm.CreateTester("AAA", o, key, activateWPASupplicant, o.aaawait)
 			if err := tm.StartTester(t); err != nil {
 				logger.Error("Cannot Start AAA Executer error:%v", err)
 			}
-		} else if current == device.ONU_OMCIACTIVE && next == device.ONU_INACTIVE {
+		} else if previous == device.ONU_OMCIACTIVE && current == device.ONU_INACTIVE {
 			if err := tm.StopTester("AAA", key); err != nil {
 				logger.Error("Cannot Stop AAA Executer error:%v", err)
 			}
@@ -220,12 +225,13 @@ func transitOnu(key device.Devkey, current device.DeviceState, next device.Devic
 	}
 
 	if o.Mode == BOTH {
-		if current == device.ONU_OMCIACTIVE {
+		if previous == device.ONU_OMCIACTIVE && current == device.ONU_AUTHENTICATED {
+			logger.Debug("Starting DHCP client for device %v", key)
 			t := tm.CreateTester("DHCP", o, key, activateDHCPClient, o.dhcpwait)
 			if err := tm.StartTester(t); err != nil {
 				logger.Error("Cannot Start DHCP Executer error:%v", err)
 			}
-		} else if current == device.ONU_AUTHENTICATED && next == device.ONU_INACTIVE {
+		} else if previous == device.ONU_AUTHENTICATED && current == device.ONU_INACTIVE {
 			if err := tm.StopTester("DHCP", key); err != nil {
 				logger.Error("Cannot Stop DHCP Executer error:%v", err)
 			}

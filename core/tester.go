@@ -92,6 +92,8 @@ func (tm *TestManager) StartTester(t *Tester) error {
 	key := t.Key
 	waitsec := t.Waitsec
 
+	// TODO use timers instead of this crazy loop: https://gobyexample.com/timers
+
 	logger.Debug("StartTester type:%s called with key:%v", testtype, key)
 	child, cancel := context.WithCancel(tm.ctx)
 	t.ctx = child

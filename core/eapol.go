@@ -22,8 +22,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"sync"
+	"time"
 
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
 	"github.com/google/gopacket"
@@ -39,6 +41,10 @@ const (
 	EAP_RESPCHA
 	EAP_SUCCESS
 )
+
+func (eap clientState) String() string  {
+	return [...]string{"EAP_START", "EAP_RESPID", "EAP_RESPCHA", "EAP_SUCCESS"}[eap]
+}
 
 type eapResponder struct {
 	clients map[clientKey]*eapClientInstance
@@ -89,11 +95,13 @@ func RunEapolResponder(ctx context.Context, eapolOut chan *byteMsg, eapolIn chan
 				responder := getEAPResponder()
 				clients := responder.clients
 				if c, ok := clients[clientKey{intfid: msg.IntfId, onuid: msg.OnuId}]; ok {
-					logger.Debug("Got client intfid:%d onuid: %d", c.key.intfid, c.key.onuid)
+					logger.Debug("Got client intfid:%d onuid: %d (ClientID: %v)", c.key.intfid, c.key.onuid, c.curId)
 					nextstate := respondMessage("EAPOL", *c, msg, eapolIn)
 					c.updateState(nextstate)
 				} else {
-					logger.Error("Failed to find eapol client instance intfid:%d onuid:%d", msg.IntfId, msg.OnuId)
+					logger.WithFields(log.Fields{
+						"clients": clients,
+					}).Errorf("Failed to find eapol client instance intfid:%d onuid:%d", msg.IntfId, msg.OnuId)
 				}
 			case <-ctx.Done():
 				return
@@ -123,6 +131,37 @@ func respondMessage(msgtype string, client clientInstance, recvmsg *byteMsg, msg
 	return nextstate
 }
 
+func sendEAPStart(intfid uint32, onuid uint32, client eapClientInstance, bytes []byte, eapolIn chan *byteMsg) error {
+	for {
+		responder := getEAPResponder()
+		clients := responder.clients
+		if c, ok := clients[clientKey{intfid: intfid, onuid: onuid}]; ok {
+			if c.curState == EAP_SUCCESS {
+				logger.WithFields(log.Fields{
+					"int_id": intfid,
+					"onu_id": onuid,
+				}).Debug("EAP_SUCCESS received, stop retrying")
+				break
+			}
+		} else {
+			logger.WithFields(log.Fields{
+				"clients": clients,
+			}).Errorf("Failed to find eapol client instance intfid:%d onuid:%d (sendEAPStart)", intfid, onuid)
+		}
+		if err := sendBytes(clientKey{intfid, onuid}, bytes, eapolIn); err != nil {
+			return errors.New("Failed to send EAPStart")
+		}
+		logger.WithFields(log.Fields{
+			"int_id": intfid,
+			"onu_id": onuid,
+			"eapolIn": eapolIn,
+			"bytes": bytes,
+		}).Debug("EAPStart Sent")
+		time.Sleep(30 * time.Second)
+	}
+	return nil
+}
+
 func startEAPClient(intfid uint32, onuid uint32) error {
 	client := eapClientInstance{key: clientKey{intfid: intfid, onuid: onuid},
 		srcaddr:  &net.HardwareAddr{0x2e, 0x60, 0x70, 0x13, 0x07, byte(onuid)},
@@ -134,10 +173,8 @@ func startEAPClient(intfid uint32, onuid uint32) error {
 	bytes := client.createEAPOL(eap)
 	resp := getEAPResponder()
 	eapolIn := resp.eapolIn
-	if err := sendBytes(clientKey{intfid, onuid}, bytes, eapolIn); err != nil {
-		return errors.New("Failed to send EAPStart")
-	}
-	logger.Debug("Sending EAPStart")
+	// start a loop that keeps sending EAPOL packets until it succeeds
+	go sendEAPStart(intfid, onuid, client, bytes, eapolIn)
 	// clients[key{intfid: intfid, onuid: onuid}] = &client
 	resp.clients[clientKey{intfid: intfid, onuid: onuid}] = &client
 	return nil
@@ -156,6 +193,7 @@ func (c eapClientInstance) transitState(cur clientState, recvbytes []byte) (next
 		if cur == EAP_START {
 			reseap := c.createEAPResID()
 			pkt := c.createEAPOL(reseap)
+			logger.Debug("Moving from EAP_START to EAP_RESPID")
 			return EAP_RESPID, pkt, nil
 		}
 	} else if eap.Code == layers.EAPCodeRequest && eap.Type == layers.EAPTypeOTP {
@@ -167,12 +205,14 @@ func (c eapClientInstance) transitState(cur clientState, recvbytes []byte) (next
 			senddata = append([]byte{0x10}, senddata...)
 			sendeap := c.createEAPResCha(senddata)
 			pkt := c.createEAPOL(sendeap)
+			logger.Debug("Moving from EAP_RESPID to EAP_RESPCHA")
 			return EAP_RESPCHA, pkt, nil
 		}
 	} else if eap.Code == layers.EAPCodeSuccess && eap.Type == layers.EAPTypeNone {
 		logger.Debug("Received EAP-Success")
 		logger.Debug(recvpkt.Dump())
 		if cur == EAP_RESPCHA {
+			logger.Debug("Moving from EAP_RESPCHA to EAP_SUCCESS")
 			return EAP_SUCCESS, nil, nil
 		}
 	} else {

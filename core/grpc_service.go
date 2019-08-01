@@ -253,21 +253,42 @@ func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty,
 			"c_tag": flow.Action.IVid,
 		}).Debug("OLT receives FlowAdd().")
 
+
 		// EAPOL flow
 		if flow.Classifier.EthType == uint32(layers.EthernetTypeEAPOL) {
-			logger.Debug("OLT %d receives EAPOL flow IntfID:%d OnuID:%d EType:%x", s.Olt.ID, flow.AccessIntfId, flow.OnuId, flow.Classifier.EthType)
-			omcistate := omci.GetOnuOmciState(onu.IntfID, onu.OnuID)
-			if omcistate != omci.DONE {
-				logger.Warn("FlowAdd() OMCI state %d is not \"DONE\"", omci.GetOnuOmciState(onu.OnuID, onu.IntfID))
+			logger.WithFields(log.Fields{
+				"Classifier.OVid": flow.Classifier.OVid,
+				"Classifier.IVid": flow.Classifier.IVid,
+				"Classifier.EthType": flow.Classifier.EthType,
+				"Classifier.SrcPort": flow.Classifier.SrcPort,
+				"Classifier.DstPort": flow.Classifier.DstPort,
+				"Action.OVid": flow.Action.OVid,
+				"Action.IVid": flow.Action.IVid,
+				"IntfID": flow.AccessIntfId,
+				"OltID": s.Olt.ID,
+				"OnuID": flow.OnuId,
+				"FlowId": flow.FlowId,
+				"UniID": flow.UniId,
+				"PortNo": flow.PortNo,
+				"FlowType": flow.FlowType,
+			}).Debug("OLT receives EAPOL flow")
+
+			if flow.Classifier.OVid == 4091 {
+				omcistate := omci.GetOnuOmciState(onu.IntfID, onu.OnuID)
+				if omcistate != omci.DONE {
+					logger.Warn("FlowAdd() OMCI state %d is not \"DONE\"", omci.GetOnuOmciState(onu.OnuID, onu.IntfID))
+				}
+				_ = s.updateOnuIntState(onu.IntfID, onu.OnuID, device.ONU_OMCIACTIVE)
 			}
-			_ = s.updateOnuIntState(onu.IntfID, onu.OnuID, device.ONU_OMCIACTIVE)
+
 		}
 
 		// DHCP flow
 		if flow.Classifier.EthType == uint32(layers.EthernetTypeIPv4) {
 			logger.Debug("Received flow's srcPort:%d dstPort:%d", flow.Classifier.SrcPort, flow.Classifier.DstPort)
 			if flow.Classifier.SrcPort == uint32(68) && flow.Classifier.DstPort == uint32(67) {
-				logger.Debug("OLT %d receives DHCP flow IntfID:%d OnuID:%d EType:%x GemPortID:%d", s.Olt.ID, flow.AccessIntfId, flow.OnuId, flow.Classifier.EthType, flow.GemportId)
+				logger.Debug("OLT %d receives DHCP flow IntfID:%d OnuID:%d EType:%x GemPortID:%d VLanIDs: %d/%d",
+					s.Olt.ID, flow.AccessIntfId, flow.OnuId, flow.Classifier.EthType, flow.GemportId, flow.Classifier.OVid, flow.Classifier.IVid)
 				omcistate := omci.GetOnuOmciState(onu.IntfID, onu.OnuID)
 				if omcistate != omci.DONE {
 					logger.Warn("FlowAdd() OMCI state %d is not \"DONE\"", omci.GetOnuOmciState(onu.OnuID, onu.IntfID))

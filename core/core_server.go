@@ -308,24 +308,38 @@ func (s *Server) Disable() {
 }
 
 func (s *Server) updateDevIntState(dev device.Device, state device.DeviceState) {
-	logger.Debug("updateDevIntState called state:%d", state)
 	current := dev.GetIntState()
 	dev.UpdateIntState(state)
+	logger.Debug("updateDevIntState called state: current %s, next %s", device.ONUState[current], device.ONUState[dev.GetIntState()])
 	s.stateRepCh <- stateReport{device: dev, current: current, next: state}
 	if reflect.TypeOf(dev) == reflect.TypeOf(&device.Olt{}) {
-		logger.Debug("OLT State updated to:%d", state)
+		logger.Debug("OLT State updated to:%s", device.ONUState[state])
 	} else if reflect.TypeOf(dev) == reflect.TypeOf(&device.Onu{}) {
-		logger.Debug("ONU State updated to:%d", state)
+		logger.Debug("ONU State updated to:%s", device.ONUState[state])
 	} else {
 		logger.Error("UpdateDevIntState () doesn't support this device: %s", reflect.TypeOf(dev))
 	}
 }
 
 func (s *Server) updateOnuIntState(intfid uint32, onuid uint32, state device.DeviceState) error {
+
 	onu, err := s.GetOnuByID(onuid, intfid)
+
 	if err != nil {
+		logger.Warn("Failed to get ONU %d: %v", onuid, err)
 		return err
 	}
+
+	if state == onu.GetIntState(){
+		logger.WithFields(log.Fields{
+			"toState": device.ONUState[state],
+			"currentState": device.ONUState[onu.GetIntState()],
+		}).Warn("Trying to update the state with the same state, ignoring this request")
+		return nil
+	}
+
+	logger.Debug("Transitioning ONU state from %s to %s", device.ONUState[onu.GetIntState()], device.ONUState[state])
+
 	s.updateDevIntState(onu, state)
 	return nil
 }

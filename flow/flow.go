@@ -19,6 +19,7 @@ package flow
 import (
 	"gerrit.opencord.org/voltha-bbsim/common/logger"
 	openolt "gerrit.opencord.org/voltha-bbsim/protos"
+	log "github.com/sirupsen/logrus"
 )
 
 var flowManager FlowManager
@@ -72,7 +73,14 @@ func InitializeDefaultFlowController() FlowManager {
 
 // AddFlow method implemented for DefaultFlowController
 func (fc *DefaultFlowController) AddFlow(flow *openolt.Flow) error {
-	logger.Debug("AddFlow invoked %v", flow)
+	logger.WithFields(log.Fields{
+		"flow_eth_type": flow.Classifier.EthType,
+		"ovid": flow.Classifier.OVid,
+		"ivid": flow.Classifier.IVid,
+		"onu_id": flow.OnuId,
+		"flow_id": flow.FlowId,
+		"flow_type": flow.FlowType,
+	}).Debugf("AddFlow invoked for onu %d", flow.OnuId)
 	return nil
 }
 
