@@ -85,8 +85,7 @@ func PopVLAN(pkt gopacket.Packet) (gopacket.Packet, uint16, error) {
 			return retpkt, vid, nil
 		}
 	}
-	return pkt, 0, nil
-	// return nil, 0, errors.New("failed to pop vlan")
+	return nil, 0, errors.New("failed to pop vlan")
 }
 
 // PushVLAN pushes the vlan header to the packet and returns tha packet

@@ -646,14 +646,25 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 				"payload": layerDHCP.LayerPayload(),
 				"type":    layerDHCP.LayerType().String(),
 			}).Info("Received downstream packet is DHCP.")
-			rawpkt, _, _ = PopVLAN(rawpkt)
-			rawpkt, _, _ = PopVLAN(rawpkt)
-			logger.Debug("%s", rawpkt.Dump())
-			dhcpPkt := byteMsg{IntfId: intfid, OnuId: onuid, Byte: rawpkt.Data()}
+			poppkt, _, err := PopVLAN(rawpkt)
+			if err != nil {
+				logger.Error("Received untagged packet when expecting single-tagged packet. Dropped.")
+				return nil
+			} else {
+				// check to see if the packet was double-tagged
+				_, _, err := PopVLAN(poppkt)
+				if err == nil {
+					logger.Error("Received double-tagged packet when expecting single-tagged packet. Dropped.")
+					return nil
+				}
+			}
+			logger.Debug("%s", poppkt.Dump())
+			dhcpPkt := byteMsg{IntfId: intfid, OnuId: onuid, Byte: poppkt.Data()}
 			s.dhcpOut <- &dhcpPkt
 			return nil
 		} else {
 			device.LoggerWithOnu(onu).Warn("WARNING: Received packet is not EAPOL or DHCP")
+			// TODO(smbaker): Clarify if this return is correct. There is SendUni() dead code that follows.
 			return nil
 		}
 		ioinfo, err := s.identifyUniIoinfo("inside", intfid, onuid)
@@ -670,10 +681,18 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 
 func (s *Server) uplinkPacketOut(rawpkt gopacket.Packet) error {
 	poppkt, _, err := PopVLAN(rawpkt)
-	poppkt, _, err = PopVLAN(poppkt)
 	if err != nil {
-		logger.Error("%s", err)
-		return err
+		logger.Error("Received untagged packet when expecting single-tagged packet. Dropped")
+		return nil
+	} else {
+		// check to see if the packet was double-tagged
+		poppktAgain, _, err := PopVLAN(poppkt)
+		if err == nil {
+			poppkt = poppktAgain
+		} else {
+			logger.Error("Received single-tagged packet when expecting double-tagged packet. Dropped.")
+			return nil
+		}
 	}
 	ioinfo, err := s.IdentifyNniIoinfo("inside")
 	if err != nil {
