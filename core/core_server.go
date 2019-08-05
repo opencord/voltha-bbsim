@@ -662,14 +662,14 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 			}).Info("Received downstream packet is DHCP.")
 			poppkt, _, err := PopVLAN(rawpkt)
 			if err != nil {
-				logger.Error("Received untagged packet when expecting single-tagged packet. Dropped.")
-				return nil
+				logger.Warn("Received untagged packet when expecting single-tagged packet.")
+				poppkt = rawpkt
 			} else {
 				// check to see if the packet was double-tagged
-				_, _, err := PopVLAN(poppkt)
+				poppktAgain, _, err := PopVLAN(poppkt)
 				if err == nil {
-					logger.Error("Received double-tagged packet when expecting single-tagged packet. Dropped.")
-					return nil
+					logger.Warn("Received double-tagged packet when expecting single-tagged packet.")
+					poppkt = poppktAgain
 				}
 			}
 			logger.Debug("%s", poppkt.Dump())
@@ -696,16 +696,15 @@ func (s *Server) onuPacketOut(intfid uint32, onuid uint32, rawpkt gopacket.Packe
 func (s *Server) uplinkPacketOut(rawpkt gopacket.Packet) error {
 	poppkt, _, err := PopVLAN(rawpkt)
 	if err != nil {
-		logger.Error("Received untagged packet when expecting single-tagged packet. Dropped")
-		return nil
+		logger.Warn("Received untagged packet when expecting double-tagged packet.")
+		poppkt = rawpkt
 	} else {
 		// check to see if the packet was double-tagged
 		poppktAgain, _, err := PopVLAN(poppkt)
 		if err == nil {
 			poppkt = poppktAgain
 		} else {
-			logger.Error("Received single-tagged packet when expecting double-tagged packet. Dropped.")
-			return nil
+			logger.Warn("Received single-tagged packet when expecting double-tagged packet.")
 		}
 	}
 	ioinfo, err := s.IdentifyNniIoinfo("inside")
