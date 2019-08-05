@@ -213,7 +213,7 @@ func (s *Server) handleONUHardReboot(onu *device.Onu) {
 	_ = sendDyingGaspInd(*s.EnableServer, onu.IntfID, onu.OnuID)
 	device.UpdateOnusOpStatus(onu.IntfID, onu, "down")
 	// send operstat down to voltha
-	_ = sendOnuInd(*s.EnableServer, onu, s.IndInterval, "down", "up")
+	_ = sendOnuInd(*s.EnableServer, onu, "down", "up")
 	// Give OEH some time to perform cleanup
 	time.Sleep(30 * time.Second)
 	s.activateOnu(onu)
@@ -291,7 +291,7 @@ func (s *Server) HandleOnuDeactivate(onu *device.Onu) error {
 
 	// Send DyingGasp Alarm to VOLTHA
 	_ = sendDyingGaspInd(*s.EnableServer, onu.IntfID, onu.OnuID)
-	_ = sendOnuInd(*s.EnableServer, onu, s.IndInterval, onu.OperState, "down")
+	_ = sendOnuInd(*s.EnableServer, onu, onu.OperState, "down")
 	return nil
 }
 

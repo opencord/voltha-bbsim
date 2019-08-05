@@ -112,7 +112,7 @@ func (s *Server) ActivateOnu(c context.Context, onu *openolt.Onu) (*openolt.Empt
 	matched.OnuID = onuid
 	s.updateDevIntState(matched, device.ONU_ACTIVE)
 	logger.Debug("ONU IntfID: %d OnuID: %d activated succesufully.", onu.IntfId, onu.OnuId)
-	if err := sendOnuInd(*s.EnableServer, matched, s.IndInterval, "up", "up"); err != nil {
+	if err := sendOnuInd(*s.EnableServer, matched, "up", "up"); err != nil {
 		logger.Error("Failed to send ONU Indication intfID %d, onuID %d", matched.IntfID, matched.OnuID)
 		return new(openolt.Empty), err
 	}

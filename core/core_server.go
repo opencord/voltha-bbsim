@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -65,7 +66,7 @@ type Server struct {
 	mgmtGrpcPort    uint32
 	mgmtRestPort    uint32
 	Vethnames       []string
-	IndInterval     int
+	IndInterval     time.Duration
 	Processes       []string
 	EnableServer    *openolt.Openolt_EnableIndicationServer
 	CtagMap         map[string]uint32
@@ -363,6 +364,9 @@ func (s *Server) activateONUs(stream openolt.Openolt_EnableIndicationServer, Onu
 	for intfid := range Onumap {
 		for _, onu := range Onumap[intfid] {
 			s.activateOnu(onu)
+			if s.IndInterval > 0 {
+				time.Sleep(s.IndInterval)
+			}
 		}
 	}
 }

@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/opencord/voltha-bbsim/common/logger"
 	"github.com/opencord/voltha-bbsim/device"
@@ -53,7 +54,7 @@ type option struct {
 	aaawait                  int
 	dhcpwait                 int
 	dhcpservip               string
-	intvl                    int
+	intvl                    time.Duration
 	interactiveOnuActivation bool
 	Mode                     Mode
 	KafkaBroker              string
@@ -71,7 +72,7 @@ func GetOptions() *option {
 	aaawait := flag.Int("aw", 2, "Wait time (sec) for activation WPA supplicants after EAPOL flow entry installed")
 	dhcpwait := flag.Int("dw", 2, "Wait time (sec) for activation DHCP clients after DHCP flow entry installed")
 	dhcpservip := flag.String("s", "182.21.0.128", "DHCP Server IP Address")
-	intvl := flag.Int("v", 1000, "Interval each Indication (ms)")
+	intvl := flag.Duration("v", 0, "Interval each Discovery Indication, in the form of unit+suffix, such as '10ms', '1s' or '1m''. defaults to 0")
 	kafkaBroker := flag.String("k", "", "Kafka broker")
 	interactiveOnuActivation := flag.Bool("ia", false, "Enable interactive activation of ONUs")
 	mgmtGrpcPort := flag.Int("grpc", 50061, "BBSim API server gRPC port")

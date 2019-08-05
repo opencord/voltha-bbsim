@@ -17,7 +17,6 @@
 package core
 
 import (
-	"time"
 
 	"github.com/opencord/voltha-bbsim/common/logger"
 	"github.com/opencord/voltha-bbsim/device"
@@ -91,8 +90,7 @@ func sendOnuDiscInd(stream openolt.Openolt_EnableIndicationServer, onu *device.O
 	return nil
 }
 
-func sendOnuInd(stream openolt.Openolt_EnableIndicationServer, onu *device.Onu, delay int, operState string, adminState string) error {
-	time.Sleep(time.Duration(delay) * time.Millisecond)
+func sendOnuInd(stream openolt.Openolt_EnableIndicationServer, onu *device.Onu, operState string, adminState string) error {
 	data := &openolt.Indication_OnuInd{OnuInd: &openolt.OnuIndication{
 		IntfId:       onu.IntfID,
 		OnuId:        onu.OnuID,

@@ -87,7 +87,7 @@ func (s *Server) handleOnuAlarm(in *pb.ONUAlarmRequest) (*pb.BBSimResponse, erro
 		}
 		Ind := formulateLossOfPLOAM(in.Status, onu)
 		s.alarmCh <- Ind
-		er := sendOnuInd(*s.EnableServer, onu, 0, onu.OperState, "up")
+		er := sendOnuInd(*s.EnableServer, onu, onu.OperState, "up")
 		if er != nil {
 			logger.Debug(er.Error())
 		}
@@ -129,7 +129,7 @@ func (s *Server) handleOltAlarm(in *pb.OLTAlarmRequest) (*pb.BBSimResponse, erro
 				continue // Skip for onus which have independently raised onu los
 			}
 
-			er := sendOnuInd(*s.EnableServer, onu, 0, onusOperstat, "up")
+			er := sendOnuInd(*s.EnableServer, onu, onusOperstat, "up")
 			if er != nil {
 				logger.Debug(er.Error())
 			}

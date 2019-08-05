@@ -112,7 +112,7 @@ Usage of ./bbsim:
   -s string
       DHCP Server IP Address (default "182.21.0.128")
   -v int
-      Interval each ONU Discovery Indication (ms) (default 1000)
+      Interval each Discovery Indication, in the form of unit+suffix, such as '10ms', '1s' or '1m' (default 0)
   -ia bool
       Interactive activation of ONUs: if true ONUs must be activated explicitly using the management API (no ONUs are activated at startup) (default false)
   -grpc int
