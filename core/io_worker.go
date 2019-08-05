@@ -21,11 +21,11 @@ import (
 	"net"
 	"strconv"
 
-	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"gerrit.opencord.org/voltha-bbsim/device"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"github.com/opencord/voltha-bbsim/common/logger"
+	"github.com/opencord/voltha-bbsim/device"
 )
 
 // RecvWorker receives the packet and forwards to the channel

@@ -19,7 +19,7 @@ package device
 import (
 	"fmt"
 
-	"gerrit.opencord.org/voltha-bbsim/common/logger"
+	"github.com/opencord/voltha-bbsim/common/logger"
 	log "github.com/sirupsen/logrus"
 	"strconv"
 )

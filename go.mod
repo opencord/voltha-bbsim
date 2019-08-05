@@ -1,4 +1,4 @@
-module gerrit.opencord.org/voltha-bbsim
+module github.com/opencord/voltha-bbsim
 
 go 1.12
 

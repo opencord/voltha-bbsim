@@ -20,8 +20,8 @@ import (
 	"reflect"
 	"sync"
 
-	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	openolt "gerrit.opencord.org/voltha-bbsim/protos"
+	"github.com/opencord/voltha-bbsim/common/logger"
+	openolt "github.com/opencord/voltha-bbsim/protos"
 	log "github.com/sirupsen/logrus"
 )
 

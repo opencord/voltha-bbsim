@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-BBSIM_DEPS  = $(wildcard ./*.go)
-VERSION     ?= $(shell cat ./VERSION)
-DOCKER_TAG  ?= ${VERSION}
-DOCKER_ORG  ?= voltha/
-DOCKER_REGISTRY ?= ""
+VERSION                  ?= $(shell cat ./VERSION)
+BBSIM_DEPS                = $(wildcard ./*.go)
 
 ## Docker related
+DOCKER_REGISTRY          ?= ""
+DOCKER_REPOSITORY        ?= voltha/
 DOCKER_BUILD_ARGS        ?=
 DOCKER_TAG               ?= ${VERSION}
+BBSIM_IMAGENAME          := ${DOCKER_REGISTRY}${DOCKER_REPOSITORY}voltha-bbsim:${DOCKER_TAG}
 
 ## Docker labels. Only set ref and commit date if committed
 DOCKER_LABEL_VCS_URL     ?= $(shell git remote get-url $(shell git remote))
@@ -82,10 +82,10 @@ clean:
 	        api/swagger/*.json
 
 docker-build:
-	docker build -t ${DOCKER_REGISTRY}${DOCKER_ORG}voltha-bbsim:${DOCKER_TAG} .
+	docker build ${DOCKER_BUILD_ARGS} -t ${BBSIM_IMAGENAME} .
 
 docker-save:
-	docker save ${DOCKER_REGISTRY}${DOCKER_ORG}voltha-bbsim:${DOCKER_TAG} -o voltha-bbsim_${DOCKER_TAG}.tgz
+	docker save ${BBSIM_IMAGENAME} -o voltha-bbsim_${DOCKER_TAG}.tgz
 
 docker-push:
-	docker push ${DOCKER_REGISTRY}${DOCKER_ORG}voltha-bbsim:${DOCKER_TAG}
+	docker push ${BBSIM_IMAGENAME}

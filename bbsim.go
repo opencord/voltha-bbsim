@@ -19,8 +19,8 @@ package main
 import (
 	"log"
 
-	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"gerrit.opencord.org/voltha-bbsim/core"
+	"github.com/opencord/voltha-bbsim/common/logger"
+	"github.com/opencord/voltha-bbsim/core"
 )
 
 func printBanner() {

@@ -19,13 +19,13 @@ package core
 import (
 	"net"
 
-	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"gerrit.opencord.org/voltha-bbsim/device"
-	flowHandler "gerrit.opencord.org/voltha-bbsim/flow"
-	openolt "gerrit.opencord.org/voltha-bbsim/protos"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	omci "github.com/opencord/omci-sim"
+	"github.com/opencord/voltha-bbsim/common/logger"
+	"github.com/opencord/voltha-bbsim/device"
+	flowHandler "github.com/opencord/voltha-bbsim/flow"
+	openolt "github.com/opencord/voltha-bbsim/protos"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"

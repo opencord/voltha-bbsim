@@ -19,9 +19,9 @@ package core
 import (
 	"context"
 
-	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	openolt "gerrit.opencord.org/voltha-bbsim/protos"
 	omci "github.com/opencord/omci-sim"
+	"github.com/opencord/voltha-bbsim/common/logger"
+	openolt "github.com/opencord/voltha-bbsim/protos"
 )
 
 // RunOmciResponder starts a go routine to process/respond to OMCI messages from VOLTHA

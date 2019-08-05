@@ -24,8 +24,8 @@ import (
 	"strconv"
 	"time"
 
-	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"gerrit.opencord.org/voltha-bbsim/device"
+	"github.com/opencord/voltha-bbsim/common/logger"
+	"github.com/opencord/voltha-bbsim/device"
 )
 
 // TestManager is the structure for test manager

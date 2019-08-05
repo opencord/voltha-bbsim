@@ -31,7 +31,7 @@ RUN apt-get update \
  && go get -v github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway \
  && go get -v github.com/golang/protobuf/protoc-gen-go
 
-WORKDIR /go/src/gerrit.opencord.org/voltha-bbsim
+WORKDIR /go/src/github.com/opencord/voltha-bbsim
 ENV GO111MODULE=on
 ENV GOPROXY=https://proxy.golang.org
 
@@ -69,6 +69,6 @@ RUN mv /usr/sbin/dhcpd /usr/local/bin/ \
 && touch /var/lib/dhcp/dhcpd.leases
 
 WORKDIR /app
-COPY --from=builder /go/src/gerrit.opencord.org/voltha-bbsim/bbsim /app/bbsim
+COPY --from=builder /go/src/github.com/opencord/voltha-bbsim/bbsim /app/bbsim
 
 CMD [ '/app/bbsim' ]

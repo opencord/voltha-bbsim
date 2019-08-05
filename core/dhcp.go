@@ -26,9 +26,9 @@ import (
 	"reflect"
 	"sync"
 
-	"gerrit.opencord.org/voltha-bbsim/common/logger"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/opencord/voltha-bbsim/common/logger"
 )
 
 // Constants for DHCP states

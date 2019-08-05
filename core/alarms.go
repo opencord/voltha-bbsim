@@ -19,10 +19,10 @@ package core
 import (
 	"strconv"
 
-	pb "gerrit.opencord.org/voltha-bbsim/api"
-	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"gerrit.opencord.org/voltha-bbsim/device"
-	openolt "gerrit.opencord.org/voltha-bbsim/protos"
+	pb "github.com/opencord/voltha-bbsim/api"
+	"github.com/opencord/voltha-bbsim/common/logger"
+	"github.com/opencord/voltha-bbsim/device"
+	openolt "github.com/opencord/voltha-bbsim/protos"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

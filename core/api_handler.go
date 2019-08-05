@@ -22,9 +22,9 @@ import (
 	"strconv"
 	"time"
 
-	pb "gerrit.opencord.org/voltha-bbsim/api"
-	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"gerrit.opencord.org/voltha-bbsim/device"
+	pb "github.com/opencord/voltha-bbsim/api"
+	"github.com/opencord/voltha-bbsim/common/logger"
+	"github.com/opencord/voltha-bbsim/device"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

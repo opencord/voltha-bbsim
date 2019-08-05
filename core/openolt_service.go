@@ -19,9 +19,9 @@ package core
 import (
 	"time"
 
-	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"gerrit.opencord.org/voltha-bbsim/device"
-	openolt "gerrit.opencord.org/voltha-bbsim/protos"
+	"github.com/opencord/voltha-bbsim/common/logger"
+	"github.com/opencord/voltha-bbsim/device"
+	openolt "github.com/opencord/voltha-bbsim/protos"
 )
 
 func sendOltIndUp(stream openolt.Openolt_EnableIndicationServer, olt *device.Olt) error {

@@ -20,8 +20,8 @@ import (
 	"errors"
 	"os/exec"
 
-	"gerrit.opencord.org/voltha-bbsim/common/logger"
 	"github.com/google/gopacket/pcap"
+	"github.com/opencord/voltha-bbsim/common/logger"
 	log "github.com/sirupsen/logrus"
 )
 

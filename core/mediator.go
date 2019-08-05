@@ -25,8 +25,8 @@ import (
 	"strings"
 	"sync"
 
-	"gerrit.opencord.org/voltha-bbsim/common/logger"
-	"gerrit.opencord.org/voltha-bbsim/device"
+	"github.com/opencord/voltha-bbsim/common/logger"
+	"github.com/opencord/voltha-bbsim/device"
 	log "github.com/sirupsen/logrus"
 )
 
