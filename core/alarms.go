@@ -22,7 +22,7 @@ import (
 	pb "github.com/opencord/voltha-bbsim/api"
 	"github.com/opencord/voltha-bbsim/common/logger"
 	"github.com/opencord/voltha-bbsim/device"
-	openolt "github.com/opencord/voltha-bbsim/protos"
+	openolt "github.com/opencord/voltha-protos/go/openolt"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

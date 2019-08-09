@@ -21,7 +21,7 @@ import (
 
 	omci "github.com/opencord/omci-sim"
 	"github.com/opencord/voltha-bbsim/common/logger"
-	openolt "github.com/opencord/voltha-bbsim/protos"
+	openolt "github.com/opencord/voltha-protos/go/openolt"
 )
 
 // RunOmciResponder starts a go routine to process/respond to OMCI messages from VOLTHA

@@ -17,6 +17,7 @@
 package core
 
 import (
+	"github.com/opencord/voltha-protos/go/tech_profile"
 	"net"
 
 	"github.com/google/gopacket"
@@ -25,7 +26,7 @@ import (
 	"github.com/opencord/voltha-bbsim/common/logger"
 	"github.com/opencord/voltha-bbsim/device"
 	flowHandler "github.com/opencord/voltha-bbsim/flow"
-	openolt "github.com/opencord/voltha-bbsim/protos"
+	openolt "github.com/opencord/voltha-protos/go/openolt"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -120,15 +121,27 @@ func (s *Server) ActivateOnu(c context.Context, onu *openolt.Onu) (*openolt.Empt
 	return new(openolt.Empty), nil
 }
 
-// CreateTconts method should handle Tcont creation
-func (s *Server) CreateTconts(c context.Context, tconts *openolt.Tconts) (*openolt.Empty, error) {
-	logger.Debug("OLT receives CreateTconts()")
+// CreateTrafficSchedulers method should handle TrafficScheduler creation
+func (s *Server) CreateTrafficSchedulers(context.Context, *tech_profile.TrafficSchedulers) (*openolt.Empty, error) {
+	logger.Debug("OLT receives CreateTrafficSchedulers()")
 	return new(openolt.Empty), nil
 }
 
-// RemoveTconts method should handle t-cont removal
-func (s *Server) RemoveTconts(c context.Context, tconts *openolt.Tconts) (*openolt.Empty, error) {
-	logger.Debug("OLT receives RemoveTconts()")
+// RemoveTrafficSchedulers method should handle TrafficScheduler removal
+func (s *Server) RemoveTrafficSchedulers(context.Context, *tech_profile.TrafficSchedulers) (*openolt.Empty, error) {
+	logger.Debug("OLT receives RemoveTrafficSchedulers()")
+	return new(openolt.Empty), nil
+}
+
+// CreateTrafficQueues method should handle TrafficQueues creation
+func (s *Server) CreateTrafficQueues(context.Context, *tech_profile.TrafficQueues) (*openolt.Empty, error) {
+	logger.Debug("OLT receives CreateTrafficQueues()")
+	return new(openolt.Empty), nil
+}
+
+// RemoveTrafficQueues method should handle TrafficQueues removal
+func (s *Server) RemoveTrafficQueues(context.Context, *tech_profile.TrafficQueues) (*openolt.Empty, error) {
+	logger.Debug("OLT receives RemoveTrafficQueues()")
 	return new(openolt.Empty), nil
 }
 
@@ -253,24 +266,23 @@ func (s *Server) FlowAdd(c context.Context, flow *openolt.Flow) (*openolt.Empty,
 			"c_tag": flow.Action.IVid,
 		}).Debug("OLT receives FlowAdd().")
 
-
 		// EAPOL flow
 		if flow.Classifier.EthType == uint32(layers.EthernetTypeEAPOL) {
 			logger.WithFields(log.Fields{
-				"Classifier.OVid": flow.Classifier.OVid,
-				"Classifier.IVid": flow.Classifier.IVid,
+				"Classifier.OVid":    flow.Classifier.OVid,
+				"Classifier.IVid":    flow.Classifier.IVid,
 				"Classifier.EthType": flow.Classifier.EthType,
 				"Classifier.SrcPort": flow.Classifier.SrcPort,
 				"Classifier.DstPort": flow.Classifier.DstPort,
-				"Action.OVid": flow.Action.OVid,
-				"Action.IVid": flow.Action.IVid,
-				"IntfID": flow.AccessIntfId,
-				"OltID": s.Olt.ID,
-				"OnuID": flow.OnuId,
-				"FlowId": flow.FlowId,
-				"UniID": flow.UniId,
-				"PortNo": flow.PortNo,
-				"FlowType": flow.FlowType,
+				"Action.OVid":        flow.Action.OVid,
+				"Action.IVid":        flow.Action.IVid,
+				"IntfID":             flow.AccessIntfId,
+				"OltID":              s.Olt.ID,
+				"OnuID":              flow.OnuId,
+				"FlowId":             flow.FlowId,
+				"UniID":              flow.UniId,
+				"PortNo":             flow.PortNo,
+				"FlowType":           flow.FlowType,
 			}).Debug("OLT receives EAPOL flow")
 
 			if flow.Classifier.OVid == 4091 {

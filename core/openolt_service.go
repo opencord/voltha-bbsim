@@ -20,7 +20,7 @@ import (
 
 	"github.com/opencord/voltha-bbsim/common/logger"
 	"github.com/opencord/voltha-bbsim/device"
-	openolt "github.com/opencord/voltha-bbsim/protos"
+	openolt "github.com/opencord/voltha-protos/go/openolt"
 )
 
 func sendOltIndUp(stream openolt.Openolt_EnableIndicationServer, olt *device.Olt) error {

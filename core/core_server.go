@@ -33,7 +33,7 @@ import (
 	"github.com/opencord/voltha-bbsim/common/logger"
 	"github.com/opencord/voltha-bbsim/device"
 	flowHandler "github.com/opencord/voltha-bbsim/flow"
-	openolt "github.com/opencord/voltha-bbsim/protos"
+	openolt "github.com/opencord/voltha-protos/go/openolt"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -331,9 +331,9 @@ func (s *Server) updateOnuIntState(intfid uint32, onuid uint32, state device.Dev
 		return err
 	}
 
-	if state == onu.GetIntState(){
+	if state == onu.GetIntState() {
 		logger.WithFields(log.Fields{
-			"toState": device.ONUState[state],
+			"toState":      device.ONUState[state],
 			"currentState": device.ONUState[onu.GetIntState()],
 		}).Warn("Trying to update the state with the same state, ignoring this request")
 		return nil

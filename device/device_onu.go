@@ -21,7 +21,7 @@ import (
 	"sync"
 
 	"github.com/opencord/voltha-bbsim/common/logger"
-	openolt "github.com/opencord/voltha-bbsim/protos"
+	openolt "github.com/opencord/voltha-protos/go/openolt"
 	log "github.com/sirupsen/logrus"
 )
 

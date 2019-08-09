@@ -28,7 +28,7 @@ DOCKER_LABEL_VCS_REF     ?= $(shell git diff-index --quiet HEAD -- && git rev-pa
 DOCKER_LABEL_COMMIT_DATE ?= $(shell git diff-index --quiet HEAD -- && git show -s --format=%cd --date=iso-strict HEAD || echo "unknown" )
 DOCKER_LABEL_BUILD_DATE  ?= $(shell date -u "+%Y-%m-%dT%H:%M:%SZ")
 
-bbsim: dep protos/openolt.pb.go bbsimapi
+bbsim: dep bbsimapi
 	GO111MODULE=on go build -i -v -o $@
 
 dep:
@@ -36,13 +36,6 @@ dep:
 	GO111MODULE=off go get -v github.com/golang/protobuf/protoc-gen-go
 	GO111MODULE=off go get -v github.com/google/gopacket
 	GO111MODULE=on go mod download all
-
-protos/openolt.pb.go: openolt.proto
-	@protoc -I . \
-	-I${GOPATH}/src \
-	-I${GOPATH}/src/github.com/grpc-ecosystem/grpc-gateway/third_party/googleapis \
-	--go_out=plugins=grpc:protos/ \
-	$<
 
 bbsimapi: api/bbsim.proto
 	@protoc -I ./api \
@@ -61,7 +54,7 @@ swagger:						 ## Generate swagger documentation for BBsim API
 	--swagger_out=logtostderr=true,allow_delete_body=true:api/swagger/ \
 	bbsim.proto
 
-test: dep protos/openolt.pb.go bbsimapi
+test: dep bbsimapi
 	GO111MODULE=on go test -v ./...
 	GO111MODULE=on go test -v ./... -cover
 

@@ -41,9 +41,6 @@ RUN go mod download
 
 # build the protos
 COPY Makefile ./
-COPY openolt.proto ./
-COPY protos/ ./protos
-RUN make protos/openolt.pb.go
 COPY api/ ./api
 RUN make bbsimapi
 

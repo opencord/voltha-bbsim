@@ -42,7 +42,7 @@ const (
 	EAP_SUCCESS
 )
 
-func (eap clientState) String() string  {
+func (eap clientState) String() string {
 	return [...]string{"EAP_START", "EAP_RESPID", "EAP_RESPCHA", "EAP_SUCCESS"}[eap]
 }
 
@@ -152,10 +152,10 @@ func sendEAPStart(intfid uint32, onuid uint32, client eapClientInstance, bytes [
 			return errors.New("Failed to send EAPStart")
 		}
 		logger.WithFields(log.Fields{
-			"int_id": intfid,
-			"onu_id": onuid,
+			"int_id":  intfid,
+			"onu_id":  onuid,
 			"eapolIn": eapolIn,
-			"bytes": bytes,
+			"bytes":   bytes,
 		}).Debug("EAPStart Sent")
 		time.Sleep(30 * time.Second)
 	}
