@@ -143,6 +143,8 @@ func sendEAPStart(intfid uint32, onuid uint32, client eapClientInstance, bytes [
 				}).Debug("EAP_SUCCESS received, stop retrying")
 				break
 			}
+			// Reset state to EAP start
+			c.updateState(EAP_START)
 		} else {
 			logger.WithFields(log.Fields{
 				"clients": clients,
