@@ -41,12 +41,13 @@ RUN go mod download
 
 # build the protos
 COPY Makefile ./
+COPY VERSION ./
 COPY api/ ./api
 RUN make bbsimapi
 
 # copy and build
 COPY . ./
-RUN GO111MODULE=on go build -i -v -o bbsim
+RUN make bbsim
 
 # runtime parent
 FROM golang:1.12-stretch
