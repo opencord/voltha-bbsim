@@ -15,4 +15,5 @@ require (
 	golang.org/x/sync v0.0.0-20190423024810-112230192c58
 	google.golang.org/genproto v0.0.0-20190716160619-c506a9f90610
 	google.golang.org/grpc v1.22.1
+	gopkg.in/jcmturner/goidentity.v3 v3.0.0 // indirect
 )

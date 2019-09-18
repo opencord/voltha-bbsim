@@ -28,29 +28,31 @@ DOCKER_LABEL_VCS_REF     ?= $(shell git diff-index --quiet HEAD -- && git rev-pa
 DOCKER_LABEL_COMMIT_DATE ?= $(shell git diff-index --quiet HEAD -- && git show -s --format=%cd --date=iso-strict HEAD || echo "unknown" )
 DOCKER_LABEL_BUILD_DATE  ?= $(shell date -u "+%Y-%m-%dT%H:%M:%SZ")
 
+GRPC_GW_PATH             ?= $(shell GO111MODULE=on go list -f '{{ .Dir }}' -m github.com/grpc-ecosystem/grpc-gateway)
+
 bbsim: dep bbsimapi
 	GO111MODULE=on go build -i -v -o $@
 
 dep:
-	GO111MODULE=off go get -u github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway
-	GO111MODULE=off go get -v github.com/golang/protobuf/protoc-gen-go
-	GO111MODULE=off go get -v github.com/google/gopacket
+	GO111MODULE=on go get -v github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway@v1.9.5
 	GO111MODULE=on go mod download all
 
-bbsimapi: api/bbsim.proto
+
+bbsimapi: dep api/bbsim.pb.go api/bbsim.pb.gw.go
+	@echo using ${GRPC_GW_PATH}
+
+api/bbsim.pb.go api/bbsim.pb.gw.go: api/bbsim.proto
 	@protoc -I ./api \
-	-I${GOPATH}/src \
-	-I${GOPATH}/src/github.com/grpc-ecosystem/grpc-gateway/third_party/googleapis \
-	-I${GOPATH}/src/github.com/grpc-ecosystem/grpc-gateway \
+	-I${GRPC_GW_PATH}/third_party/googleapis/ \
+	-I${GRPC_GW_PATH}/ \
 	--go_out=plugins=grpc:api/ \
 	--grpc-gateway_out=logtostderr=true,allow_delete_body=true:api/ \
 	api/bbsim.proto
 
 swagger:						 ## Generate swagger documentation for BBsim API
 	@protoc -I ./api \
-	-I${GOPATH}/src \
-	-I${GOPATH}/src/github.com/grpc-ecosystem/grpc-gateway/third_party/googleapis \
-	-I${GOPATH}/src/github.com/grpc-ecosystem/grpc-gateway \
+	-I${GRPC_GW_PATH}/third_party/googleapis/ \
+	-I${GRPC_GW_PATH}/ \
 	--swagger_out=logtostderr=true,allow_delete_body=true:api/swagger/ \
 	bbsim.proto
 
@@ -69,8 +71,7 @@ lint:
 
 clean:
 	@rm -vf bbsim \
-			protos/openolt.pb.go \
-			api/bbsim.pb.go \
+		api/bbsim.pb.go \
 	        api/bbsim.pb.gw.go \
 	        api/swagger/*.json
 
