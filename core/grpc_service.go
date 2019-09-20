@@ -200,7 +200,7 @@ func (s *Server) OmciMsgOut(c context.Context, msg *openolt.OmciMsg) (*openolt.E
 	logger.Debug("ONU-ID: %v, ONU state: %d", msg.OnuId, state)
 
 	// If ONU is ONU_INACTIVE, ONU_FREE or ONU_OMCI_CHANNEL_LOS_RAISED drop
-	if state != device.ONU_ACTIVE && state != device.ONU_OMCIACTIVE {
+	if state != device.ONU_ACTIVE && state != device.ONU_OMCIACTIVE && state != device.ONU_AUTHENTICATED {
 		logger.Info("ONU (IF %v ONU-ID: %v) is not ACTIVE, so not processing OmciMsg", msg.IntfId, msg.OnuId)
 		return new(openolt.Empty), nil
 	}
