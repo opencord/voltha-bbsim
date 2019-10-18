@@ -1,3 +1,8 @@
+# Deprecation notice
+
+This repository has been deprecated in favor a complete rewrite of the software.
+Please follow the development here: https://github.com/opencord/bbsim
+
 # 1. Overview & Features
 
 The BBSim (Broadband Simulator) is a software simulator for emulating the control message response (e.g. OLTInd, DHCP, EAPOL, OpenOMCI messages etc..) sent from OLT and ONUs to VOLTHA/ONOS via OpenOLT Adapter.
